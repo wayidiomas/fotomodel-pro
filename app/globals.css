@@ -1,0 +1,163 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-primary-black: #20202a;
+    --color-primary: #000000;
+    --color-sand-light: #e5ded6;
+    --color-sand: #eae6de;
+    --color-gray-dark: #2c2c2c;
+    --color-gray: #858180;
+    --color-gray-light: #f4f4f4;
+    --color-success: #29c115;
+    --color-error: #c11515;
+    --color-white: #ffffff;
+  }
+
+  * {
+    box-sizing: border-box;
+    padding: 0;
+    margin: 0;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-white text-black font-inter antialiased;
+  }
+
+  /* Figma design tokens */
+  h1 {
+    @apply font-freight text-display-xl;
+  }
+
+  h2 {
+    @apply font-freight text-display-lg;
+  }
+
+  h3 {
+    @apply font-haas text-title-lg;
+  }
+
+  h4 {
+    @apply font-haas text-title-md;
+  }
+
+  h5 {
+    @apply font-haas text-title-sm;
+  }
+
+  p {
+    @apply font-haas text-body-md;
+  }
+}
+
+@layer components {
+  /* Primary Button - from Figma */
+  .btn-primary {
+    @apply bg-gray-dark text-white rounded-button-lg h-button flex items-center justify-center gap-2.5 px-4 font-haas text-button transition-colors hover:bg-black;
+  }
+
+  /* Secondary Button - from Figma */
+  .btn-secondary {
+    @apply bg-sand-light/50 text-black rounded-button-lg h-button flex items-center justify-center gap-2.5 px-4 font-haas text-button transition-colors hover:bg-sand-light;
+  }
+
+  /* Card - from Figma */
+  .card {
+    @apply bg-white rounded-card border border-gray-light shadow-sm;
+  }
+
+  /* Input - from Figma */
+  .input {
+    @apply w-full h-12 px-4 rounded-input border border-gray-light bg-white text-black placeholder:text-gray focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent;
+  }
+
+  /* Gradient Overlay - from Figma */
+  .gradient-overlay {
+    @apply bg-gradient-overlay;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Animations for Login Page */
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slide-right {
+    from {
+      opacity: 0;
+      transform: translateX(-30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes slide-left {
+    from {
+      opacity: 0;
+      transform: translateX(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.8s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.6s ease-out;
+  }
+
+  .animate-slide-right {
+    animation: slide-right 0.8s ease-out;
+  }
+
+  .animate-slide-left {
+    animation: slide-left 0.8s ease-out;
+  }
+
+  /* Parallax Background Animations */
+  @keyframes subtle-zoom {
+    0% {
+      transform: scale(1);
+    }
+    100% {
+      transform: scale(1.05);
+    }
+  }
+
+  .animate-subtle-zoom {
+    animation: subtle-zoom 20s ease-in-out infinite alternate;
+  }
+}
