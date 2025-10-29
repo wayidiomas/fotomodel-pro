@@ -6,154 +6,48 @@ import Image from 'next/image';
 /**
  * Login page - Tela de Boas-Vindas
  * Design baseado no Figma (node-id: 286:1666)
+ * Background: Slideshow entre yoga-1 e yoga-2 com transições suaves
  */
 export default function LoginPage() {
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [isMobile, setIsMobile] = useState(true); // Começa como mobile para evitar flash
 
-  // Detect mobile/tablet
+  // Slideshow automático: alterna entre yoga-1 e yoga-2 a cada 5 segundos
   useEffect(() => {
-    const checkMobile = () => {
-      const mobile = window.innerWidth < 1024;
-      console.log('📱 isMobile:', mobile, '| window.innerWidth:', window.innerWidth);
-      setIsMobile(mobile);
-    };
-
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
-  // Parallax effect desktop
-  useEffect(() => {
-    if (isMobile) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const x = (e.clientX / window.innerWidth - 0.5) * 2;
-      const y = (e.clientY / window.innerHeight - 0.5) * 2;
-      setMousePosition({ x, y });
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, [isMobile]);
-
-  // Slideshow mobile
-  useEffect(() => {
-    if (!isMobile) return;
-
     const interval = setInterval(() => {
       setCurrentImageIndex((prev) => (prev === 0 ? 1 : 0));
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [isMobile]);
+  }, []);
 
   return (
     <div className="relative flex min-h-screen items-end justify-center overflow-hidden bg-white lg:items-center">
-      {/* TESTE: img nativa para debug */}
-      <img
-        src="/assets/images/background-yoga-1.png"
-        alt="test"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100px',
-          height: '100px',
-          zIndex: 9999,
-          border: '5px solid red'
-        }}
-      />
-
-      {/* Parallax Background with Yoga Images */}
+      {/* Background Slideshow usando img nativa */}
       <div className="absolute inset-0 -z-10">
-        <div className="relative h-full w-full">
-          {/* Mobile: Slideshow entre yoga-1 e yoga-2 */}
-          {isMobile ? (
-            <>
-              {/* Yoga Image 1 */}
-              <div
-                className="absolute inset-0 transition-opacity duration-1000"
-                style={{ opacity: currentImageIndex === 0 ? 1 : 0 }}
-              >
-                <Image
-                  src="/assets/images/background-yoga-1.png"
-                  alt="Yoga model background 1"
-                  fill
-                  className="object-cover object-center"
-                  priority
-                  unoptimized
-                />
-              </div>
+        {/* Yoga Image 1 */}
+        <img
+          src="/assets/images/background-yoga-1.png"
+          alt="Yoga model background 1"
+          className="absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-1000"
+          style={{ opacity: currentImageIndex === 0 ? 1 : 0 }}
+        />
 
-              {/* Yoga Image 2 */}
-              <div
-                className="absolute inset-0 transition-opacity duration-1000"
-                style={{ opacity: currentImageIndex === 1 ? 1 : 0 }}
-              >
-                <Image
-                  src="/assets/images/background-yoga-2.png"
-                  alt="Yoga model background 2"
-                  fill
-                  className="object-cover object-center"
-                  priority
-                  unoptimized
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              {/* Layer 1: Background (yoga-1) - movimento menor */}
-              <div
-                className="absolute inset-0 transition-transform duration-200 ease-out will-change-transform"
-                style={{
-                  transform: `translate3d(${mousePosition.x * 10}px, ${mousePosition.y * 10}px, 0) scale(1.1)`,
-                }}
-              >
-                <Image
-                  src="/assets/images/background-yoga-1.png"
-                  alt="Parallax background layer"
-                  fill
-                  className="object-cover object-center opacity-70"
-                  priority
-                  unoptimized
-                />
-              </div>
+        {/* Yoga Image 2 */}
+        <img
+          src="/assets/images/background-yoga-2.png"
+          alt="Yoga model background 2"
+          className="absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-1000"
+          style={{ opacity: currentImageIndex === 1 ? 1 : 0 }}
+        />
 
-              {/* Layer 2: Foreground (yoga-2) - movimento maior */}
-              <div
-                className="absolute inset-0 transition-transform duration-200 ease-out will-change-transform"
-                style={{
-                  transform: `translate3d(${mousePosition.x * 20}px, ${mousePosition.y * 20}px, 0) scale(1.1)`,
-                }}
-              >
-                <Image
-                  src="/assets/images/background-yoga-2.png"
-                  alt="Parallax foreground layer"
-                  fill
-                  className="object-cover object-center opacity-90"
-                  priority
-                  unoptimized
-                />
-              </div>
-            </>
-          )}
-
-          {/* Gradient Overlay - ajustado para mostrar imagens */}
-          <div
-            className="absolute inset-x-0 bottom-0 h-[524px] lg:inset-0 lg:h-full"
-            style={{
-              background:
-                'linear-gradient(180deg, rgba(255,255,255,0) 7.242%, rgba(255,255,255,0.4) 45%, #ffffff 61.522%)',
-            }}
-          />
-
-          {/* Desktop: overlay adicional para profundidade */}
-          <div className="absolute inset-0 hidden bg-black/5 lg:block" />
-        </div>
+        {/* Gradient Overlay */}
+        <div
+          className="absolute inset-x-0 bottom-0 h-[524px] lg:inset-0 lg:h-full"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(255,255,255,0) 7.242%, rgba(255,255,255,0.4) 45%, #ffffff 61.522%)',
+          }}
+        />
       </div>
 
       {/* Main Content Container */}
