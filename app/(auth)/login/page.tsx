@@ -56,16 +56,14 @@ function LoginStep({
       <div className="flex min-h-screen flex-col items-center justify-between px-6 pb-8 pt-20 lg:hidden">
         {/* Logo - 190x90px como no Figma */}
         <div className="flex-shrink-0 animate-fade-in">
-          <div className="flex h-[90px] w-[190px] items-center justify-center rounded-2xl bg-white/95 shadow-lg backdrop-blur-sm">
-            <Image
-              src="/assets/images/logo.svg"
-              alt="Logotipo Fotomodel"
-              width={190}
-              height={90}
-              priority
-              className="h-[70px] w-[150px] object-contain"
-            />
-          </div>
+          <Image
+            src="/assets/images/logo.svg"
+            alt="Logotipo Fotomodel"
+            width={190}
+            height={90}
+            priority
+            className="h-[70px] w-[150px] object-contain"
+          />
         </div>
 
         {/* Welcome Content */}
@@ -129,15 +127,13 @@ function LoginStep({
           <div className="flex-1 animate-slide-right">
             <div className="max-w-[600px]">
               <div className="mb-8">
-                <div className="mb-4 flex h-[120px] w-[240px] items-center justify-center rounded-3xl bg-white shadow-2xl">
-                  <Image
-                    src="/assets/images/logo.svg"
-                    alt="Logotipo Fotomodel"
-                    width={240}
-                    height={120}
-                    className="h-[90px] w-[200px] object-contain"
-                  />
-                </div>
+                <Image
+                  src="/assets/images/logo.svg"
+                  alt="Logotipo Fotomodel"
+                  width={240}
+                  height={120}
+                  className="mb-4 h-[90px] w-[200px] object-contain"
+                />
               </div>
 
               <h2 className="mb-6 font-freight text-6xl leading-[1.1] text-black">
@@ -344,15 +340,13 @@ function VerifyStep({
           <div className="flex-1 animate-slide-right">
             <div className="max-w-[600px]">
               <div className="mb-8">
-                <div className="mb-4 flex h-[120px] w-[240px] items-center justify-center rounded-3xl bg-white shadow-2xl">
-                  <Image
-                    src="/assets/images/logo.svg"
-                    alt="Logotipo Fotomodel"
-                    width={240}
-                    height={120}
-                    className="h-[90px] w-[200px] object-contain"
-                  />
-                </div>
+                <Image
+                  src="/assets/images/logo.svg"
+                  alt="Logotipo Fotomodel"
+                  width={240}
+                  height={120}
+                  className="mb-4 h-[90px] w-[200px] object-contain"
+                />
               </div>
             </div>
           </div>
@@ -458,15 +452,15 @@ export default function LoginPage() {
         caption: 'Modelos realistas para catálogos premium',
         alt: 'Modelo feminina em pose de estúdio com look esportivo',
         image: '/assets/images/background-yoga-1.png',
-        position: { top: -90, left: -220 },
+        position: { top: -90, right: -220 },
         size: { width: 230, height: 320 },
-        rotation: -9,
-        translate: { x: 14, y: 11 },
+        rotation: 9,
+        translate: { x: -14, y: 11 },
         objectPosition: 'center 12%',
         zIndex: 6,
         entry: {
-          offset: { x: 160, y: 150 },
-          rotation: -2,
+          offset: { x: -160, y: 150 },
+          rotation: 2,
           scale: 0.78,
           delay: 90,
         },
@@ -478,15 +472,15 @@ export default function LoginPage() {
         caption: 'Pronto para e-commerce e redes sociais',
         alt: 'Modelo feminina em cena conceitual com iluminação suave',
         image: '/assets/images/background-yoga-2.png',
-        position: { bottom: -80, right: -210 },
+        position: { bottom: -80, left: -210 },
         size: { width: 240, height: 320 },
-        rotation: 10,
-        translate: { x: 16, y: 12 },
+        rotation: -10,
+        translate: { x: -16, y: 12 },
         objectPosition: 'center 68%',
         zIndex: 5,
         entry: {
-          offset: { x: -170, y: -160 },
-          rotation: 4,
+          offset: { x: 170, y: -160 },
+          rotation: -4,
           scale: 0.78,
           delay: 160,
         },
