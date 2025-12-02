@@ -1,40 +1,29 @@
-import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-export async function GET(request: Request) {
+/**
+ * OAuth callback route - redirects to /login with the code
+ * The browser client on /login will handle the PKCE code exchange
+ * since it has access to the code_verifier stored in cookies
+ */
+export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
-  const next = searchParams.get('next') ?? '/dashboard';
+  const error = searchParams.get('error');
+  const errorDescription = searchParams.get('error_description');
 
-  if (code) {
-    const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-    if (!error) {
-      // Check if user is new (needs onboarding)
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (user) {
-        // Check if user exists in users table
-        const { data: existingUser } = await (supabase
-          .from('users') as any)
-          .select('id')
-          .eq('id', user.id)
-          .single();
-
-        if (!existingUser) {
-          // New user - redirect to onboarding
-          return NextResponse.redirect(`${origin}/onboarding`);
-        }
-      }
-
-      // Existing user - redirect to dashboard
-      return NextResponse.redirect(`${origin}${next}`);
-    }
+  // If there's an error from the OAuth provider, redirect to login with error
+  if (error) {
+    console.error('OAuth error:', error, errorDescription);
+    return NextResponse.redirect(`${origin}/login?error=${error}`);
   }
 
-  // Return the user to an error page with instructions
-  return NextResponse.redirect(`${origin}/login?error=auth_callback_error`);
+  // If there's a code, redirect to /login with the code
+  // The browser client will handle the PKCE exchange
+  if (code) {
+    return NextResponse.redirect(`${origin}/login?code=${code}`);
+  }
+
+  // No code or error - redirect to login
+  return NextResponse.redirect(`${origin}/login`);
 }

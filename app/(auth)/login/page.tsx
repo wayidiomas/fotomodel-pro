@@ -1062,7 +1062,8 @@ export default function LoginPage() {
               const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                  redirectTo: `${window.location.origin}/auth/callback`,
+                  // Redirect back to /login so browser client can complete PKCE exchange
+                  redirectTo: `${window.location.origin}/login`,
                 },
               });
               if (error) {
