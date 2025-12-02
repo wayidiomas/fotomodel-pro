@@ -6,14 +6,12 @@ import {
   ArrowRight,
   Hanger,
   FlatSurface,
-  Reload,
-  MenuDots,
   GridView,
   ListView,
 } from '@/components/icons';
 import { getAIToolIcon } from '@/lib/ai-tools-icons';
 import { DashboardClient } from './dashboard-client';
-import { Logo } from '@/components/shared/logo';
+import { MainHeader } from '@/components/shared/main-header';
 import { getStoragePublicUrl } from '@/lib/storage/upload';
 
 /**
@@ -26,16 +24,6 @@ import { getStoragePublicUrl } from '@/lib/storage/upload';
  * - Downloads recentes
  * - Seção "Somente para você" com timer
  */
-
-const NAV_LINKS = [
-  { name: 'Dashboard', href: '/dashboard', active: true },
-  { name: 'Criar', href: '/criar', active: false },
-  { name: 'Chat', href: '/chat', active: false, badge: 'BETA' as const },
-  { name: 'Vestuário', href: '/vestuario', active: false },
-  { name: 'Galeria', href: '/galeria', active: false },
-  { name: 'Modelos', href: '/modelos', active: false },
-  { name: 'Histórico', href: '/historico', active: false },
-];
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -102,58 +90,7 @@ export default async function DashboardPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white">
-        <div className="mx-auto flex h-16 items-center justify-between px-8">
-          {/* Logo + Nav */}
-          <div className="flex items-center gap-8">
-            <Link href="/dashboard" className="flex items-center">
-              <Logo variant="header" className="h-8 w-auto" />
-            </Link>
-
-            <nav className="flex items-center gap-1">
-              {NAV_LINKS.map((link) => (
-                <Link
-                  key={link.name}
-                  href={link.href}
-                  className={`rounded-md px-3 py-2 text-sm font-inter font-medium transition-colors ${
-                    link.active
-                      ? 'bg-gray-200/50 text-[#20202a]'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                  }`}
-                >
-                  <span className="flex items-center gap-1.5">
-                    {link.name}
-                    {link.badge && (
-                      <span className="rounded-full bg-[#20202a] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-                        {link.badge}
-                      </span>
-                    )}
-                  </span>
-                </Link>
-              ))}
-            </nav>
-          </div>
-
-          {/* Credits + Actions */}
-          <div className="flex items-center gap-2">
-            <div className="rounded-full border border-slate-200 px-3 py-1">
-              <span className="font-inter text-sm font-semibold text-[#020817]">
-                {userData?.credits || 0} créditos
-              </span>
-            </div>
-            <Button
-              variant="outline"
-              className="h-9 gap-2 rounded-md border-slate-200 px-4 text-sm font-inter font-medium"
-            >
-              <Reload className="h-4 w-4" />
-              Recarregar
-            </Button>
-            <button className="rounded-md p-2 hover:bg-gray-100">
-              <MenuDots className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </header>
+      <MainHeader currentPage="dashboard" credits={userData?.credits || 0} />
 
       {/* Main Content */}
       <main className="mx-auto max-w-[1728px] space-y-8 px-7 py-10">

@@ -17,7 +17,7 @@ import type { GenerationWithCategories } from '@/lib/gallery/extract-categories'
 import { filterGenerationsByCategory, countGenerationsByCategory } from '@/lib/gallery/extract-categories';
 import { cn } from '@/lib/utils';
 import { GarmentCategory } from '@/lib/generation-flow/garment-metadata-types';
-import { Logo } from '@/components/shared/logo';
+import { MainHeader } from '@/components/shared/main-header';
 
 interface GaleriaClientProps {
   generations: GenerationWithCategories[];
@@ -40,15 +40,6 @@ const resolvePublicImageUrl = (path?: string | null) => {
 
   return `${bucketBase}/${path.replace(/^\/+/, '')}`;
 };
-
-const NAV_LINKS = [
-  { name: 'Dashboard', href: '/dashboard', active: false },
-  { name: 'Criar', href: '/criar', active: false },
-  { name: 'Vestuário', href: '/vestuario', active: false },
-  { name: 'Galeria', href: '/galeria', active: true },
-  { name: 'Modelos', href: '/modelos', active: false },
-  { name: 'Histórico', href: '/historico', active: false },
-];
 
 // Garment category groups for filtering (same as vestuário)
 const CATEGORY_FILTERS = [
@@ -194,42 +185,8 @@ export function GaleriaClient({ generations, userCredits }: GaleriaClientProps) 
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
-      {/* Header - Glassmorphic */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-white/20 shadow-sm">
-        <div className="mx-auto flex h-16 items-center justify-between px-8">
-          {/* Logo + Nav */}
-          <div className="flex items-center gap-8">
-            <Link href="/dashboard" className="flex items-center">
-              <Logo variant="header" className="h-8 w-auto" />
-            </Link>
-
-            <nav className="flex items-center gap-1">
-              {NAV_LINKS.map((link) => (
-                <Link
-                  key={link.name}
-                  href={link.href}
-                  className={`rounded-lg px-3 py-2 text-sm font-inter font-medium transition-all ${
-                    link.active
-                      ? 'bg-white/60 backdrop-blur-sm text-[#20202a] shadow-sm'
-                      : 'text-gray-600 hover:bg-white/40 hover:backdrop-blur-sm hover:text-gray-900'
-                  }`}
-                >
-                  {link.name}
-                </Link>
-              ))}
-            </nav>
-          </div>
-
-          {/* Credits */}
-          <div className="flex items-center gap-2">
-            <div className="rounded-full bg-white/60 backdrop-blur-sm border border-white/40 px-3 py-1 shadow-sm">
-              <span className="font-inter text-sm font-semibold text-[#020817]">
-                {userCredits} créditos
-              </span>
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Header */}
+      <MainHeader currentPage="galeria" credits={userCredits} />
 
       <div className="flex flex-col gap-8 px-10 py-8">
         {/* Hero */}
