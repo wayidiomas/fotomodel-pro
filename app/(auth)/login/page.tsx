@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Button, VerificationCodeInput } from '@/components/ui';
 import { PhoneInput } from 'react-international-phone';
@@ -732,6 +732,7 @@ function VerifyStep({
  */
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Step management
   const [currentStep, setCurrentStep] = useState<AuthStep>('login');
@@ -739,6 +740,48 @@ export default function LoginPage() {
 
   // Parallax & UI state
   const [mounted, setMounted] = useState(false);
+
+  // Handle OAuth code from URL (when Supabase redirects back to /login)
+  useEffect(() => {
+    const code = searchParams.get('code');
+    if (code) {
+      const handleOAuthCallback = async () => {
+        const supabase = createClient();
+
+        // Exchange code for session
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+        if (error) {
+          console.error('OAuth callback error:', error);
+          // Remove code from URL
+          router.replace('/login');
+          return;
+        }
+
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (user) {
+          // Check if user exists in database
+          const { data: existingUser } = await (supabase
+            .from('users') as any)
+            .select('id')
+            .eq('id', user.id)
+            .single();
+
+          if (!existingUser) {
+            // New user - go to onboarding
+            router.push('/onboarding');
+          } else {
+            // Existing user - go to dashboard
+            router.push('/dashboard');
+          }
+        }
+      };
+
+      handleOAuthCallback();
+    }
+  }, [searchParams, router]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isDesktop, setIsDesktop] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
