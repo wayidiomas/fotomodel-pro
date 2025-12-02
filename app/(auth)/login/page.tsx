@@ -63,47 +63,47 @@ function LoginStep({
           <div className="flex flex-col items-center gap-6">
             {/* Welcome Text - gap: 10px (Figma) */}
             <div className="flex w-full flex-col items-center gap-2.5 text-center">
-              <h2 className="w-full font-freight text-[44px] leading-[44px] text-black">
-                Bem-vindo a Fotomodel
+              <h2 className="w-full font-inter text-[36px] font-semibold leading-[1.1] tracking-tight text-[#20202a]">
+                Bem-vindo à Fotomodel
               </h2>
-              <p className="w-full font-haas text-[18px] leading-[1.6] tracking-[-0.054px] text-black/80">
-                Modelos Virtuais. Resultados Reais
+              <p className="w-full font-inter text-[16px] font-normal leading-[1.6] text-black/60">
+                Modelos Virtuais. Resultados Reais.
               </p>
             </div>
 
             {/* Login Buttons - gap: 12px (Figma) */}
             <div className="flex w-full flex-col gap-3">
-              {/* WhatsApp Button - 322px x 52px, 14px radius (Figma) */}
+              {/* WhatsApp Button */}
               <button
-                className="group flex h-[52px] w-full items-center justify-center gap-2.5 rounded-[14px] bg-[rgba(229,222,214,0.5)] px-2.5 py-2.5 backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] hover:bg-[rgba(229,222,214,0.8)] hover:shadow-lg active:scale-[0.98]"
+                className="group flex h-[52px] w-full items-center justify-center gap-2.5 rounded-xl bg-[#25D366] px-4 transition-all duration-300 hover:scale-[1.02] hover:bg-[#22c55e] hover:shadow-lg active:scale-[0.98]"
                 onClick={onWhatsAppClick}
               >
                 <Image
                   src="/assets/icons/whatsapp.svg"
                   alt="WhatsApp"
-                  width={22}
-                  height={22}
-                  className="shrink-0 transition-transform duration-300 group-hover:scale-110"
+                  width={20}
+                  height={20}
+                  className="shrink-0 brightness-0 invert transition-transform duration-300 group-hover:scale-110"
                 />
-                <span className="font-haas text-[16px] font-medium leading-normal text-black">
-                  Entrar com WhatsApp
+                <span className="font-inter text-[15px] font-medium text-white">
+                  Continuar com WhatsApp
                 </span>
               </button>
 
-              {/* Google Button - 322px x 52px, 14px radius (Figma) */}
+              {/* Google Button */}
               <button
-                className="group flex h-[52px] w-full items-center justify-center gap-2.5 rounded-[14px] border border-black/10 bg-white px-2.5 py-2.5 transition-all duration-300 hover:scale-[1.02] hover:bg-gray-50 hover:shadow-lg active:scale-[0.98]"
+                className="group flex h-[52px] w-full items-center justify-center gap-2.5 rounded-xl border border-slate-200 bg-white px-4 transition-all duration-300 hover:scale-[1.02] hover:border-slate-300 hover:bg-slate-50 hover:shadow-md active:scale-[0.98]"
                 onClick={onGoogleClick}
               >
                 <Image
                   src="/assets/icons/google.svg"
                   alt="Google"
-                  width={20}
-                  height={20}
+                  width={18}
+                  height={18}
                   className="shrink-0 transition-transform duration-300 group-hover:scale-110"
                 />
-                <span className="font-haas text-[16px] font-medium leading-normal text-black">
-                  Entrar com Google
+                <span className="font-inter text-[15px] font-medium text-slate-700">
+                  Continuar com Google
                 </span>
               </button>
             </div>
@@ -117,23 +117,23 @@ function LoginStep({
           {/* Left Side: Welcome Text */}
           <div className="flex-[0.7] animate-slide-right">
             <div className="max-w-[450px]">
-              <div className="mb-8">
+              <div className="mb-10">
                 <Image
                   src="/assets/images/logo.svg"
                   alt="Logotipo Fotomodel"
-                  width={300}
-                  height={150}
-                  className="mb-4 h-[110px] w-[250px] object-contain"
+                  width={220}
+                  height={110}
+                  className="h-[80px] w-auto object-contain"
                 />
               </div>
 
-              <h2 className="mb-6 font-freight text-6xl leading-[1.1] text-black">
-                Bem-vindo a<br />Fotomodel
+              <h2 className="mb-4 font-inter text-5xl font-semibold leading-[1.1] tracking-tight text-[#20202a]">
+                Bem-vindo à<br />Fotomodel
               </h2>
-              <p className="mb-8 font-haas text-2xl leading-relaxed text-black/70">
-                Modelos Virtuais. Resultados Reais
+              <p className="mb-6 font-inter text-xl font-normal leading-relaxed text-slate-500">
+                Modelos Virtuais. Resultados Reais.
               </p>
-              <p className="font-haas text-lg leading-relaxed text-black/60">
+              <p className="font-inter text-base leading-relaxed text-slate-400">
                 Crie modelos virtuais realistas com IA para suas roupas e produtos.
                 Economize tempo e dinheiro em produções fotográficas.
               </p>
@@ -143,7 +143,7 @@ function LoginStep({
           {/* Right Side: Login Card */}
           <div className="flex flex-[1.3] items-center justify-center">
             <div className="relative z-10 flex w-full max-w-[340px] flex-col rounded-2xl bg-white/95 p-6 shadow-2xl backdrop-blur-xl">
-              <h3 className="mb-5 text-center font-freight text-[28px] leading-tight text-black">
+              <h3 className="mb-5 text-center font-inter text-[28px] font-semibold leading-tight text-black">
                 Faça seu login
               </h3>
 
@@ -161,7 +161,7 @@ function LoginStep({
                     height={24}
                     className="shrink-0 transition-transform duration-300 group-hover:scale-110"
                   />
-                  <span className="font-haas text-lg font-medium leading-normal text-black">
+                  <span className="font-inter text-lg font-medium leading-normal text-black">
                     Entrar com WhatsApp
                   </span>
                 </button>
@@ -178,14 +178,14 @@ function LoginStep({
                     height={22}
                     className="shrink-0 transition-transform duration-300 group-hover:scale-110"
                   />
-                  <span className="font-haas text-lg font-medium leading-normal text-black">
+                  <span className="font-inter text-lg font-medium leading-normal text-black">
                     Entrar com Google
                   </span>
                 </button>
               </div>
 
               {/* Footer */}
-              <p className="mt-6 text-center font-haas text-sm text-black/50">
+              <p className="mt-6 text-center font-inter text-sm text-black/50">
                 Ao fazer login, você concorda com nossos{' '}
                 <button className="underline hover:text-black">Termos de Serviço</button>
               </p>
@@ -282,12 +282,12 @@ function PhoneStep({
           <div className="flex flex-col items-center gap-6">
             {/* Title */}
             <div className="flex w-full flex-col items-center gap-4 text-center">
-              <h2 className="w-full font-freight text-[44px] leading-[44px] text-black">
+              <h2 className="w-full font-inter text-[36px] font-semibold leading-[1.1] tracking-tight text-black">
                 Qual seu número?
               </h2>
 
               {/* Subtitle */}
-              <p className="w-full font-haas text-[16px] leading-[1.6] tracking-[-0.054px] text-black/70">
+              <p className="w-full font-inter text-[16px] leading-[1.6] text-black/70">
                 Vamos enviar um código de verificação via WhatsApp
               </p>
             </div>
@@ -300,16 +300,16 @@ function PhoneStep({
                   value={phone}
                   onChange={handlePhoneChange}
                   placeholder="(11) 99999-9999"
-                  inputClassName="h-[55px] w-full rounded-[14px] border-2 border-black/10 bg-white px-4 font-haas text-[18px] text-black placeholder:text-black/40 focus:border-black focus:outline-none"
+                  inputClassName="h-[55px] w-full rounded-[14px] border-2 border-black/10 bg-white px-4 font-inter text-[18px] text-black placeholder:text-black/40 focus:border-black focus:outline-none"
                   countrySelectorStyleProps={{
                     buttonClassName: "h-[55px] rounded-l-[14px] border-2 border-r-0 border-black/10 bg-white hover:bg-gray-50",
                     dropdownStyleProps: {
-                      className: "font-haas"
+                      className: "font-inter"
                     }
                   }}
                 />
                 {error && (
-                  <p className="font-haas text-sm text-red-500">{error}</p>
+                  <p className="font-inter text-sm text-red-500">{error}</p>
                 )}
               </div>
 
@@ -318,14 +318,14 @@ function PhoneStep({
                 <button
                   onClick={handleSubmit}
                   disabled={isSending}
-                  className="flex h-[52px] w-full items-center justify-center rounded-[14px] bg-black px-6 py-4 font-haas text-[16px] font-medium text-white transition-all duration-300 hover:scale-[1.02] hover:bg-black/90 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                  className="flex h-[52px] w-full items-center justify-center rounded-[14px] bg-black px-6 py-4 font-inter text-[16px] font-medium text-white transition-all duration-300 hover:scale-[1.02] hover:bg-black/90 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
                   {isSending ? 'Enviando...' : 'Enviar código'}
                 </button>
                 <button
                   onClick={onBack}
                   disabled={isSending}
-                  className="flex h-[52px] w-full items-center justify-center rounded-[14px] border-2 border-black/10 bg-transparent px-6 py-4 font-haas text-[16px] font-medium text-black transition-all duration-300 hover:scale-[1.02] hover:border-black/30 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex h-[52px] w-full items-center justify-center rounded-[14px] border-2 border-black/10 bg-transparent px-6 py-4 font-inter text-[16px] font-medium text-black transition-all duration-300 hover:scale-[1.02] hover:border-black/30 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Voltar
                 </button>
@@ -370,12 +370,12 @@ function PhoneStep({
                 </div>
 
                 {/* Title */}
-                <h3 className="font-freight text-[40px] leading-tight text-black">
+                <h3 className="font-inter text-[36px] font-semibold leading-tight text-black">
                   Qual seu número?
                 </h3>
 
                 {/* Subtitle */}
-                <p className="font-haas text-[17px] leading-[1.6] text-black/70">
+                <p className="font-inter text-[17px] leading-[1.6] text-black/70">
                   Vamos enviar um código de verificação via WhatsApp
                 </p>
               </div>
@@ -387,16 +387,16 @@ function PhoneStep({
                   value={phone}
                   onChange={handlePhoneChange}
                   placeholder="(11) 99999-9999"
-                  inputClassName="h-[60px] w-full rounded-xl border-2 border-black/10 bg-white px-6 font-haas text-[20px] text-black placeholder:text-black/40 focus:border-black focus:outline-none"
+                  inputClassName="h-[60px] w-full rounded-xl border-2 border-black/10 bg-white px-6 font-inter text-[20px] text-black placeholder:text-black/40 focus:border-black focus:outline-none"
                   countrySelectorStyleProps={{
                     buttonClassName: "h-[60px] rounded-l-xl border-2 border-r-0 border-black/10 bg-white hover:bg-gray-50",
                     dropdownStyleProps: {
-                      className: "font-haas"
+                      className: "font-inter"
                     }
                   }}
                 />
                 {error && (
-                  <p className="font-haas text-sm text-red-500">{error}</p>
+                  <p className="font-inter text-sm text-red-500">{error}</p>
                 )}
               </div>
 
@@ -405,14 +405,14 @@ function PhoneStep({
                 <button
                   onClick={handleSubmit}
                   disabled={isSending}
-                  className="flex h-[56px] w-full items-center justify-center rounded-xl bg-black px-6 font-haas text-[18px] font-medium text-white transition-all duration-300 hover:scale-[1.02] hover:bg-black/90 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                  className="flex h-[56px] w-full items-center justify-center rounded-xl bg-black px-6 font-inter text-[18px] font-medium text-white transition-all duration-300 hover:scale-[1.02] hover:bg-black/90 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
                   {isSending ? 'Enviando...' : 'Enviar código'}
                 </button>
                 <button
                   onClick={onBack}
                   disabled={isSending}
-                  className="flex h-[56px] w-full items-center justify-center rounded-xl border-2 border-black/10 bg-transparent px-6 font-haas text-[18px] font-medium text-black transition-all duration-300 hover:scale-[1.02] hover:border-black/30 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex h-[56px] w-full items-center justify-center rounded-xl border-2 border-black/10 bg-transparent px-6 font-inter text-[18px] font-medium text-black transition-all duration-300 hover:scale-[1.02] hover:border-black/30 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Voltar
                 </button>
@@ -556,7 +556,7 @@ function VerifyStep({
             </h1>
 
             {/* Instructions */}
-            <p className="mb-2 w-full max-w-[308px] text-center font-manrope text-[14px] leading-[1.65] tracking-[0.2px] text-greyscale-500">
+            <p className="mb-2 w-full max-w-[308px] text-center font-inter text-[14px] leading-[1.65] text-black/60">
               Digite o código de verificação de seis dígitos enviado para o número{' '}
               <strong>{phoneNumber}</strong>
             </p>
@@ -652,13 +652,13 @@ function VerifyStep({
                 </div>
 
                 {/* Title */}
-                <h3 className="font-freight text-[40px] leading-tight text-black">
+                <h3 className="font-inter text-[36px] font-semibold leading-tight text-black">
                   Login com WhatsApp
                 </h3>
               </div>
 
               {/* Instructions */}
-              <p className="mb-8 text-center font-manrope text-[16px] leading-[1.65] tracking-[0.2px] text-greyscale-500">
+              <p className="mb-8 text-center font-inter text-[16px] leading-[1.65] text-black/60">
                 Digite o código de verificação de seis dígitos enviado para o número{' '}
                 <strong>{phoneNumber}</strong>
               </p>
@@ -1150,13 +1150,13 @@ export default function LoginPage() {
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/25 to-transparent mix-blend-multiply" />
                             <div className="absolute inset-x-4 bottom-4 text-white drop-shadow-[0_6px_20px_rgba(13,15,20,0.35)]">
-                              <span className="inline-flex items-center rounded-full bg-white/20 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em]">
+                              <span className="inline-flex items-center rounded-full bg-white/20 px-3 py-1 font-inter text-[11px] font-medium uppercase tracking-[0.18em]">
                                 {spotlight.badge}
                               </span>
-                              <p className="mt-3 font-freight text-[22px] leading-tight">
+                              <p className="mt-3 font-inter text-[20px] font-semibold leading-tight">
                                 {spotlight.title}
                               </p>
-                              <p className="mt-1 font-haas text-xs text-white/80">
+                              <p className="mt-1 font-inter text-xs text-white/80">
                                 {spotlight.caption}
                               </p>
                             </div>
