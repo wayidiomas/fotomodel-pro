@@ -772,8 +772,24 @@ export default function LoginPage() {
 
           // PGRST116 = "no rows returned" - means new user
           if (userError?.code === 'PGRST116' || !existingUser) {
-            // New user - go to onboarding
-            console.log('New user detected, redirecting to onboarding');
+            // New user - create entry in public.users (fallback if trigger didn't work)
+            console.log('New user detected, creating public.users record');
+            const { error: insertError } = await (supabase
+              .from('users') as any)
+              .insert({
+                id: user.id,
+                email: user.email,
+                phone: user.phone,
+                credits: 10,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+
+            if (insertError && insertError.code !== '23505') {
+              // 23505 = unique violation (user already exists, which is fine)
+              console.error('Error creating public user:', insertError);
+            }
+
             router.push('/onboarding');
           } else {
             // Existing user - go to dashboard
