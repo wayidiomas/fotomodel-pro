@@ -763,17 +763,21 @@ export default function LoginPage() {
 
         if (user) {
           // Check if user exists in database
-          const { data: existingUser } = await (supabase
+          // Note: .single() throws error when no rows found, so we check error.code
+          const { data: existingUser, error: userError } = await (supabase
             .from('users') as any)
             .select('id')
             .eq('id', user.id)
             .single();
 
-          if (!existingUser) {
+          // PGRST116 = "no rows returned" - means new user
+          if (userError?.code === 'PGRST116' || !existingUser) {
             // New user - go to onboarding
+            console.log('New user detected, redirecting to onboarding');
             router.push('/onboarding');
           } else {
             // Existing user - go to dashboard
+            console.log('Existing user, redirecting to dashboard');
             router.push('/dashboard');
           }
         }
