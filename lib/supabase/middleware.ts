@@ -72,7 +72,9 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Redirect authenticated users away from login
-  if (user && request.nextUrl.pathname.startsWith('/login')) {
+  // BUT allow if there's a code param (OAuth callback needs to check if user is new)
+  const hasOAuthCode = request.nextUrl.searchParams.has('code');
+  if (user && request.nextUrl.pathname.startsWith('/login') && !hasOAuthCode) {
     const url = request.nextUrl.clone();
     url.pathname = '/dashboard';
     return NextResponse.redirect(url);
