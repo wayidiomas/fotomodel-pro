@@ -4,8 +4,11 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Button, VerificationCodeInput } from '@/components/ui';
+import { PhoneInput } from 'react-international-phone';
+import { createClient } from '@/lib/supabase/client';
+import 'react-international-phone/style.css';
 
-type AuthStep = 'login' | 'verify';
+type AuthStep = 'login' | 'phone' | 'verify';
 
 type ModelSpotlight = {
   id: string;
@@ -53,19 +56,7 @@ function LoginStep({
   return (
     <>
       {/* Mobile Layout (default) */}
-      <div className="flex min-h-screen flex-col items-center justify-between px-6 pb-8 pt-20 lg:hidden">
-        {/* Logo - 190x90px como no Figma */}
-        <div className="flex-shrink-0 animate-fade-in">
-          <Image
-            src="/assets/images/logo.svg"
-            alt="Logotipo Fotomodel"
-            width={190}
-            height={90}
-            priority
-            className="h-[70px] w-[150px] object-contain"
-          />
-        </div>
-
+      <div className="flex min-h-screen flex-col items-center justify-end px-6 pb-12 pt-20 select-none lg:hidden" style={{ touchAction: 'pan-y' }}>
         {/* Welcome Content */}
         <div className="w-full max-w-[343px] animate-slide-up">
           {/* Frame - gap: 23px (Figma) */}
@@ -122,17 +113,17 @@ function LoginStep({
 
       {/* Desktop Layout (lg+) */}
       <div className="hidden lg:flex lg:min-h-screen lg:items-center lg:justify-center lg:px-8">
-        <div className="flex w-full max-w-[1200px] items-center justify-between gap-16">
+        <div className="flex w-full max-w-[1400px] items-center justify-between gap-16">
           {/* Left Side: Welcome Text */}
-          <div className="flex-1 animate-slide-right">
-            <div className="max-w-[600px]">
+          <div className="flex-[0.7] animate-slide-right">
+            <div className="max-w-[450px]">
               <div className="mb-8">
                 <Image
                   src="/assets/images/logo.svg"
                   alt="Logotipo Fotomodel"
-                  width={240}
-                  height={120}
-                  className="mb-4 h-[90px] w-[200px] object-contain"
+                  width={300}
+                  height={150}
+                  className="mb-4 h-[110px] w-[250px] object-contain"
                 />
               </div>
 
@@ -150,17 +141,17 @@ function LoginStep({
           </div>
 
           {/* Right Side: Login Card */}
-          <div className="flex flex-1 items-center justify-center">
-            <div className="relative z-10 flex w-full max-w-[520px] flex-col rounded-3xl bg-white/95 p-12 shadow-2xl backdrop-blur-xl">
-              <h3 className="mb-8 text-center font-freight text-[40px] leading-tight text-black">
+          <div className="flex flex-[1.3] items-center justify-center">
+            <div className="relative z-10 flex w-full max-w-[340px] flex-col rounded-2xl bg-white/95 p-6 shadow-2xl backdrop-blur-xl">
+              <h3 className="mb-5 text-center font-freight text-[28px] leading-tight text-black">
                 Faça seu login
               </h3>
 
               {/* Login Buttons */}
-              <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-3.5">
                 {/* WhatsApp Button */}
                 <button
-                  className="group flex h-[60px] w-full items-center justify-center gap-3 rounded-2xl bg-[rgba(229,222,214,0.5)] px-6 py-4 backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] hover:bg-[rgba(229,222,214,0.8)] hover:shadow-xl active:scale-[0.98]"
+                  className="group flex h-[48px] w-full items-center justify-center gap-2.5 rounded-xl bg-[rgba(229,222,214,0.5)] px-6 py-4 backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] hover:bg-[rgba(229,222,214,0.8)] hover:shadow-xl active:scale-[0.98]"
                   onClick={onWhatsAppClick}
                 >
                   <Image
@@ -177,7 +168,7 @@ function LoginStep({
 
                 {/* Apple ID Button */}
                 <button
-                  className="group flex h-[60px] w-full items-center justify-center gap-3 rounded-2xl bg-[#2c2c2c] px-6 py-4 transition-all duration-300 hover:scale-[1.02] hover:bg-black hover:shadow-[0_24px_45px_-24px_rgba(0,0,0,0.55)] active:scale-[0.98]"
+                  className="group flex h-[48px] w-full items-center justify-center gap-2.5 rounded-xl bg-[#2c2c2c] px-6 py-4 transition-all duration-300 hover:scale-[1.02] hover:bg-black hover:shadow-[0_24px_45px_-24px_rgba(0,0,0,0.55)] active:scale-[0.98]"
                   onClick={onAppleClick}
                 >
                   <Image
@@ -194,7 +185,7 @@ function LoginStep({
               </div>
 
               {/* Footer */}
-              <p className="mt-8 text-center font-haas text-sm text-black/50">
+              <p className="mt-6 text-center font-haas text-sm text-black/50">
                 Ao fazer login, você concorda com nossos{' '}
                 <button className="underline hover:text-black">Termos de Serviço</button>
               </p>
@@ -207,7 +198,235 @@ function LoginStep({
 }
 
 /**
- * VerifyStep - Step 2: Verificação de código WhatsApp
+ * PhoneStep - Step 1.5: Inserir número de telefone
+ */
+function PhoneStep({
+  onSubmit,
+  onBack,
+}: {
+  onSubmit: (phone: string) => void;
+  onBack: () => void;
+}) {
+  const [phone, setPhone] = useState('+55');
+  const [error, setError] = useState('');
+  const [isSending, setIsSending] = useState(false);
+
+  const handlePhoneChange = (value: string) => {
+    setPhone(value);
+    setError('');
+  };
+
+  const validatePhone = (phoneStr: string): boolean => {
+    // Remove all non-numeric characters except +
+    const cleaned = phoneStr.replace(/[^\d+]/g, '');
+    // Check if it has at least country code + 10 digits
+    // For Brazil: +55 + 10 or 11 digits = 13-14 chars total
+    const digitCount = cleaned.replace('+', '').length;
+    return digitCount >= 10; // Minimum 10 digits (flexible for international)
+  };
+
+  const handleSubmit = async () => {
+    if (!validatePhone(phone)) {
+      setError('Digite um número de telefone válido');
+      return;
+    }
+
+    setIsSending(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ phone }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.message || data.error || 'Erro ao enviar código');
+        setIsSending(false);
+        return;
+      }
+
+      // Success - move to verification step
+      onSubmit(phone);
+    } catch (err) {
+      console.error('Error sending OTP:', err);
+      setError('Erro ao enviar código. Tente novamente.');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <>
+      {/* Mobile Layout */}
+      <div className="flex min-h-screen flex-col items-center justify-between px-6 pb-8 pt-20 lg:hidden">
+        {/* Logo */}
+        <div className="flex-shrink-0 animate-fade-in">
+          <Image
+            src="/assets/images/logo.svg"
+            alt="Logotipo Fotomodel"
+            width={190}
+            height={90}
+            priority
+            className="h-[70px] w-[150px] object-contain"
+          />
+        </div>
+
+        {/* Phone Content */}
+        <div className="w-full max-w-[343px] animate-slide-up">
+          <div className="flex flex-col items-center gap-6">
+            {/* Title */}
+            <div className="flex w-full flex-col items-center gap-4 text-center">
+              <h2 className="w-full font-freight text-[44px] leading-[44px] text-black">
+                Qual seu número?
+              </h2>
+
+              {/* Subtitle */}
+              <p className="w-full font-haas text-[16px] leading-[1.6] tracking-[-0.054px] text-black/70">
+                Vamos enviar um código de verificação via WhatsApp
+              </p>
+            </div>
+
+            {/* Phone Input */}
+            <div className="flex w-full flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <PhoneInput
+                  defaultCountry="br"
+                  value={phone}
+                  onChange={handlePhoneChange}
+                  placeholder="(11) 99999-9999"
+                  inputClassName="h-[55px] w-full rounded-[14px] border-2 border-black/10 bg-white px-4 font-haas text-[18px] text-black placeholder:text-black/40 focus:border-black focus:outline-none"
+                  countrySelectorStyleProps={{
+                    buttonClassName: "h-[55px] rounded-l-[14px] border-2 border-r-0 border-black/10 bg-white hover:bg-gray-50",
+                    dropdownStyleProps: {
+                      className: "font-haas"
+                    }
+                  }}
+                />
+                {error && (
+                  <p className="font-haas text-sm text-red-500">{error}</p>
+                )}
+              </div>
+
+              {/* Buttons */}
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={handleSubmit}
+                  disabled={isSending}
+                  className="flex h-[52px] w-full items-center justify-center rounded-[14px] bg-black px-6 py-4 font-haas text-[16px] font-medium text-white transition-all duration-300 hover:scale-[1.02] hover:bg-black/90 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                >
+                  {isSending ? 'Enviando...' : 'Enviar código'}
+                </button>
+                <button
+                  onClick={onBack}
+                  disabled={isSending}
+                  className="flex h-[52px] w-full items-center justify-center rounded-[14px] border-2 border-black/10 bg-transparent px-6 py-4 font-haas text-[16px] font-medium text-black transition-all duration-300 hover:scale-[1.02] hover:border-black/30 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Voltar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Desktop Layout */}
+      <div className="hidden lg:flex lg:min-h-screen lg:items-center lg:justify-center lg:px-8">
+        <div className="flex w-full max-w-[1000px] items-center justify-between gap-12">
+          {/* Left Side: Logo */}
+          <div className="flex-1 animate-slide-right">
+            <div className="max-w-[450px]">
+              <div className="mb-8">
+                <Image
+                  src="/assets/images/logo.svg"
+                  alt="Logotipo Fotomodel"
+                  width={300}
+                  height={150}
+                  className="mb-4 h-[110px] w-[250px] object-contain"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Right Side: Phone Card */}
+          <div className="flex flex-1 items-center justify-center">
+            <div className="relative z-10 flex w-full max-w-[420px] flex-col rounded-3xl bg-white/95 p-10 shadow-2xl backdrop-blur-xl">
+              {/* WhatsApp Icon + Title */}
+              <div className="mb-8 flex flex-col items-center gap-6 text-center">
+                {/* WhatsApp Icon Circle */}
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366]/10">
+                  <Image
+                    src="/assets/icons/whatsapp-gradient.svg"
+                    alt="WhatsApp"
+                    width={36}
+                    height={36}
+                    className="shrink-0"
+                  />
+                </div>
+
+                {/* Title */}
+                <h3 className="font-freight text-[40px] leading-tight text-black">
+                  Qual seu número?
+                </h3>
+
+                {/* Subtitle */}
+                <p className="font-haas text-[17px] leading-[1.6] text-black/70">
+                  Vamos enviar um código de verificação via WhatsApp
+                </p>
+              </div>
+
+              {/* Phone Input */}
+              <div className="mb-6 flex flex-col gap-2">
+                <PhoneInput
+                  defaultCountry="br"
+                  value={phone}
+                  onChange={handlePhoneChange}
+                  placeholder="(11) 99999-9999"
+                  inputClassName="h-[60px] w-full rounded-xl border-2 border-black/10 bg-white px-6 font-haas text-[20px] text-black placeholder:text-black/40 focus:border-black focus:outline-none"
+                  countrySelectorStyleProps={{
+                    buttonClassName: "h-[60px] rounded-l-xl border-2 border-r-0 border-black/10 bg-white hover:bg-gray-50",
+                    dropdownStyleProps: {
+                      className: "font-haas"
+                    }
+                  }}
+                />
+                {error && (
+                  <p className="font-haas text-sm text-red-500">{error}</p>
+                )}
+              </div>
+
+              {/* Buttons */}
+              <div className="flex flex-col gap-4">
+                <button
+                  onClick={handleSubmit}
+                  disabled={isSending}
+                  className="flex h-[56px] w-full items-center justify-center rounded-xl bg-black px-6 font-haas text-[18px] font-medium text-white transition-all duration-300 hover:scale-[1.02] hover:bg-black/90 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                >
+                  {isSending ? 'Enviando...' : 'Enviar código'}
+                </button>
+                <button
+                  onClick={onBack}
+                  disabled={isSending}
+                  className="flex h-[56px] w-full items-center justify-center rounded-xl border-2 border-black/10 bg-transparent px-6 font-haas text-[18px] font-medium text-black transition-all duration-300 hover:scale-[1.02] hover:border-black/30 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Voltar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * VerifyStep - Step 3: Verificação de código WhatsApp
  */
 function VerifyStep({
   phoneNumber,
@@ -215,12 +434,14 @@ function VerifyStep({
   onBack,
 }: {
   phoneNumber: string;
-  onValidate: (code: string) => void;
+  onValidate: (code: string, isNewUser: boolean) => void;
   onBack: () => void;
 }) {
   const [code, setCode] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const handleCodeComplete = async (verificationCode: string) => {
     setCode(verificationCode);
@@ -236,15 +457,77 @@ function VerifyStep({
     setError('');
 
     try {
-      // TODO: Implement actual verification API call
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const response = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phone: phoneNumber,
+          code,
+        }),
+      });
 
-      // On success, call parent handler
-      onValidate(code);
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.message || data.error || 'Código inválido');
+        setIsVerifying(false);
+        return;
+      }
+
+      // Set session in Supabase client using tokens from backend
+      const supabase = createClient();
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      });
+
+      if (sessionError) {
+        console.error('Error establishing session:', sessionError);
+        setError('Erro ao criar sessão. Tente novamente.');
+        setIsVerifying(false);
+        return;
+      }
+
+      // Success - call parent handler with isNewUser info
+      onValidate(code, data.isNewUser);
     } catch (err) {
-      setError('Código inválido. Por favor, tente novamente.');
+      console.error('Error verifying OTP:', err);
+      setError('Erro ao verificar código. Tente novamente.');
       setIsVerifying(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    setIsResending(true);
+    setError('');
+    setSuccessMessage('');
+
+    try {
+      const response = await fetch('/api/auth/resend-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ phone: phoneNumber }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.message || data.error || 'Erro ao reenviar código');
+        setIsResending(false);
+        return;
+      }
+
+      setSuccessMessage('Novo código enviado via WhatsApp!');
+      setCode(''); // Clear current code
+    } catch (err) {
+      console.error('Error resending OTP:', err);
+      setError('Erro ao reenviar código. Tente novamente.');
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -254,16 +537,14 @@ function VerifyStep({
       <div className="flex min-h-screen flex-col items-center justify-between px-6 pb-8 pt-20 lg:hidden">
         {/* Logo */}
         <div className="flex-shrink-0 animate-fade-in">
-          <div className="flex h-[90px] w-[190px] items-center justify-center rounded-2xl bg-white/95 shadow-lg backdrop-blur-sm">
-            <Image
-              src="/assets/images/logo.svg"
-              alt="Logotipo Fotomodel"
-              width={190}
-              height={90}
-              priority
-              className="h-[70px] w-[150px] object-contain"
-            />
-          </div>
+          <Image
+            src="/assets/images/logo.svg"
+            alt="Logotipo Fotomodel"
+            width={190}
+            height={90}
+            priority
+            className="h-[70px] w-[150px] object-contain"
+          />
         </div>
 
         {/* Verification Content */}
@@ -294,6 +575,11 @@ function VerifyStep({
               <p className="mb-2 text-center font-inter text-sm text-red-500">{error}</p>
             )}
 
+            {/* Success Message */}
+            {successMessage && (
+              <p className="mb-2 text-center font-inter text-sm text-green-600">{successMessage}</p>
+            )}
+
             {/* Buttons */}
             <div className="flex w-full flex-col gap-3">
               <Button
@@ -320,13 +606,11 @@ function VerifyStep({
             {/* Resend Code Link */}
             <div className="mt-2 text-center">
               <button
-                className="font-inter text-sm text-greyscale-600 underline hover:text-black"
-                onClick={() => {
-                  // TODO: Implement resend code
-                  console.log('Resend code');
-                }}
+                className="font-inter text-sm text-greyscale-600 underline hover:text-black disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleResendCode}
+                disabled={isResending || isVerifying}
               >
-                Não recebeu o código? Reenviar
+                {isResending ? 'Reenviando...' : 'Não recebeu o código? Reenviar'}
               </button>
             </div>
           </div>
@@ -335,17 +619,17 @@ function VerifyStep({
 
       {/* Desktop Layout */}
       <div className="hidden lg:flex lg:min-h-screen lg:items-center lg:justify-center lg:px-8">
-        <div className="flex w-full max-w-[1200px] items-center justify-between gap-16">
+        <div className="flex w-full max-w-[1000px] items-center justify-between gap-12">
           {/* Left Side: Logo (matches login) */}
           <div className="flex-1 animate-slide-right">
-            <div className="max-w-[600px]">
+            <div className="max-w-[450px]">
               <div className="mb-8">
                 <Image
                   src="/assets/images/logo.svg"
                   alt="Logotipo Fotomodel"
-                  width={240}
-                  height={120}
-                  className="mb-4 h-[90px] w-[200px] object-contain"
+                  width={300}
+                  height={150}
+                  className="mb-4 h-[110px] w-[250px] object-contain"
                 />
               </div>
             </div>
@@ -353,10 +637,25 @@ function VerifyStep({
 
           {/* Right Side: Verification Card */}
           <div className="flex flex-1 items-center justify-center">
-            <div className="relative z-10 flex w-full max-w-[520px] flex-col rounded-3xl bg-white/95 p-12 shadow-2xl backdrop-blur-xl">
-              <h3 className="mb-8 text-center font-freight text-[40px] leading-tight text-black">
-                Login com WhatsApp
-              </h3>
+            <div className="relative z-10 flex w-full max-w-[420px] flex-col rounded-3xl bg-white/95 p-10 shadow-2xl backdrop-blur-xl">
+              {/* WhatsApp Icon + Title */}
+              <div className="mb-8 flex flex-col items-center gap-6 text-center">
+                {/* WhatsApp Icon Circle */}
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#25D366]/10">
+                  <Image
+                    src="/assets/icons/whatsapp-gradient.svg"
+                    alt="WhatsApp"
+                    width={42}
+                    height={42}
+                    className="shrink-0"
+                  />
+                </div>
+
+                {/* Title */}
+                <h3 className="font-freight text-[40px] leading-tight text-black">
+                  Login com WhatsApp
+                </h3>
+              </div>
 
               {/* Instructions */}
               <p className="mb-8 text-center font-manrope text-[16px] leading-[1.65] tracking-[0.2px] text-greyscale-500">
@@ -376,6 +675,11 @@ function VerifyStep({
               {/* Error Message */}
               {error && (
                 <p className="mb-4 text-center font-inter text-sm text-red-500">{error}</p>
+              )}
+
+              {/* Success Message */}
+              {successMessage && (
+                <p className="mb-4 text-center font-inter text-sm text-green-600">{successMessage}</p>
               )}
 
               {/* Buttons */}
@@ -404,13 +708,11 @@ function VerifyStep({
               {/* Resend Code Link */}
               <div className="mt-6 text-center">
                 <button
-                  className="font-inter text-sm text-greyscale-600 underline hover:text-black"
-                  onClick={() => {
-                    // TODO: Implement resend code
-                    console.log('Resend code');
-                  }}
+                  className="font-inter text-sm text-greyscale-600 underline hover:text-black disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleResendCode}
+                  disabled={isResending || isVerifying}
                 >
-                  Não recebeu o código? Reenviar
+                  {isResending ? 'Reenviando...' : 'Não recebeu o código? Reenviar'}
                 </button>
               </div>
             </div>
@@ -452,16 +754,38 @@ export default function LoginPage() {
         caption: 'Modelos realistas para catálogos premium',
         alt: 'Modelo feminina em pose de estúdio com look esportivo',
         image: '/assets/images/background-yoga-1.png',
-        position: { top: -90, right: -220 },
-        size: { width: 230, height: 320 },
-        rotation: 9,
+
+        // 🎯 POSIÇÃO DINÂMICA: Perto no login, longe no phone/verify
+        position: currentStep === 'login'
+          ? { top: 20, left: -200 }   // LoginStep: posição original
+          : { top: 20, left: -250 },  // Phone/Verify: levemente afastado
+
+        // 📏 TAMANHO DO CARD (largura x altura em pixels)
+        size: { width: 240, height: 330 },
+
+        // 🔄 ROTAÇÃO (em graus)
+        // Valores positivos = inclina pra direita
+        // Valores negativos = inclina pra esquerda
+        // Tente: 5, 7, 9, 12, 15
+        rotation: 12,
+
+        // 🖱️ INTENSIDADE DO PARALLAX (movimento do mouse)
+        // x: horizontal (valores negativos = move pra esquerda com mouse)
+        // y: vertical (valores positivos = move pra baixo com mouse)
         translate: { x: -14, y: 11 },
+
         objectPosition: 'center 12%',
         zIndex: 6,
+
+        // ✨ ANIMAÇÃO DE ENTRADA (como o card aparece)
         entry: {
+          // offset: posição inicial antes de animar
           offset: { x: -160, y: 150 },
+          // rotation: rotação inicial
           rotation: 2,
+          // scale: tamanho inicial (0.78 = 78%)
           scale: 0.78,
+          // delay: atraso em milissegundos
           delay: 90,
         },
       },
@@ -472,21 +796,43 @@ export default function LoginPage() {
         caption: 'Pronto para e-commerce e redes sociais',
         alt: 'Modelo feminina em cena conceitual com iluminação suave',
         image: '/assets/images/background-yoga-2.png',
-        position: { bottom: -80, left: -210 },
-        size: { width: 240, height: 320 },
-        rotation: -10,
+
+        // 🎯 POSIÇÃO DINÂMICA: Perto no login, longe no phone/verify
+        position: currentStep === 'login'
+          ? { bottom: 30, right: -240 }  // LoginStep: posição original
+          : { bottom: 30, right: -290 }, // Phone/Verify: levemente afastado
+
+        // 📏 TAMANHO DO CARD (largura x altura em pixels)
+        size: { width: 250, height: 330 },
+
+        // 🔄 ROTAÇÃO (em graus)
+        // Valores negativos = inclina pra esquerda
+        // Valores positivos = inclina pra direita
+        // Tente: -15, -12, -10, -7, -5
+        rotation: -12,
+
+        // 🖱️ INTENSIDADE DO PARALLAX (movimento do mouse)
+        // x: horizontal (valores negativos = move pra esquerda com mouse)
+        // y: vertical (valores positivos = move pra baixo com mouse)
         translate: { x: -16, y: 12 },
+
         objectPosition: 'center 68%',
         zIndex: 5,
+
+        // ✨ ANIMAÇÃO DE ENTRADA (como o card aparece)
         entry: {
+          // offset: posição inicial antes de animar
           offset: { x: 170, y: -160 },
+          // rotation: rotação inicial
           rotation: -4,
+          // scale: tamanho inicial (0.78 = 78%)
           scale: 0.78,
+          // delay: atraso em milissegundos
           delay: 160,
         },
       },
     ],
-    [],
+    [currentStep],
   );
 
   const maxEntryDelay = useMemo(
@@ -515,14 +861,21 @@ export default function LoginPage() {
 
   // Slideshow automático para mobile: alterna entre yoga-1 e yoga-2 a cada 5 segundos
   useEffect(() => {
-    if (isDesktop) return; // Só ativa slideshow no mobile
+    if (!mounted) return; // Aguarda component mount
+
+    // Detecta mobile diretamente sem depender de isDesktop state
+    const checkIsMobile = () => typeof window !== 'undefined' && window.innerWidth < 1024;
+    if (!checkIsMobile()) return; // Só ativa slideshow no mobile
+
+    // Garante que começa no índice 0
+    setCurrentImageIndex(0);
 
     const interval = setInterval(() => {
       setCurrentImageIndex((prev) => (prev === 0 ? 1 : 0));
-    }, 5000);
+    }, 3000);
 
     return () => clearInterval(interval);
-  }, [isDesktop]);
+  }, [mounted]);
 
   // Mouse tracking para parallax (desktop only)
   useEffect(() => {
@@ -539,6 +892,16 @@ export default function LoginPage() {
 
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, [isDesktop]);
+
+  // Debug log (temporary)
+  useEffect(() => {
+    console.log('[LoginPage Debug]', {
+      mounted,
+      isDesktop,
+      currentImageIndex,
+      windowWidth: typeof window !== 'undefined' ? window.innerWidth : 'SSR',
+    });
+  }, [mounted, isDesktop, currentImageIndex]);
 
   // Entrada animada para os spotlights (desktop)
   useEffect(() => {
@@ -571,33 +934,40 @@ export default function LoginPage() {
   }, [isDesktop, maxEntryDelay]);
 
   return (
-    <div className="relative flex min-h-screen items-end justify-center overflow-hidden bg-white lg:items-center">
-      {/* Background com Parallax (desktop) ou Slideshow (mobile) */}
-      <div className="fixed inset-0 -z-10">
+    <div className="relative flex min-h-screen items-end justify-center overflow-hidden lg:items-center">
+      {/* Background com Parallax (desktop) ou Slideshow (mobile) - Apenas no Login */}
+      {currentStep === 'login' && (
+        <div className="fixed inset-0 -z-10 pointer-events-none lg:hidden">
         <div className="relative h-screen w-full overflow-hidden">
           {/* Yoga Image 1 - Camada de fundo (movimento menor) */}
           <div
-            className="absolute inset-0 will-change-transform"
+            className="absolute inset-0 will-change-transform pointer-events-none"
             style={
               isDesktop
                 ? {
                     transform: `translate3d(${mousePosition.x * 15}px, ${mousePosition.y * 15}px, 0) scale(1.1)`,
                     transition: 'transform 0.1s ease-out',
                   }
-                : {}
+                : {
+                    transform: 'scale(1.2)',
+                  }
             }
           >
             <img
               src="/assets/images/background-yoga-1.png"
               alt="Yoga model background 1"
-              className="h-full w-full object-cover object-center transition-opacity duration-1000"
-              style={{ opacity: isDesktop ? 1 : currentImageIndex === 0 ? 1 : 0 }}
+              className="h-full w-full object-cover transition-opacity duration-800 select-none pointer-events-none"
+              draggable="false"
+              style={{
+                opacity: isDesktop ? 1 : currentImageIndex === 0 ? 1 : 0,
+                objectPosition: isDesktop ? 'center' : 'center 30%',
+              }}
             />
           </div>
 
           {/* Yoga Image 2 - Camada frontal (movimento maior) */}
           <div
-            className="absolute inset-0 will-change-transform"
+            className="absolute inset-0 will-change-transform pointer-events-none"
             style={
               isDesktop
                 ? {
@@ -605,67 +975,88 @@ export default function LoginPage() {
                     transition: 'transform 0.1s ease-out',
                     opacity: 0.7,
                   }
-                : {}
+                : {
+                    transform: 'scale(1.2)',
+                  }
             }
           >
             <img
               src="/assets/images/background-yoga-2.png"
               alt="Yoga model background 2"
-              className="h-full w-full object-cover object-center transition-opacity duration-1000"
-              style={{ opacity: isDesktop ? 0.7 : currentImageIndex === 1 ? 1 : 0 }}
+              className="h-full w-full object-cover transition-opacity duration-800 select-none pointer-events-none"
+              draggable="false"
+              style={{
+                opacity: isDesktop ? 0.7 : currentImageIndex === 1 ? 1 : 0,
+                objectPosition: isDesktop ? 'center' : 'center 30%',
+              }}
             />
           </div>
 
           {/* Gradient Overlay */}
           <div
-            className="absolute inset-x-0 bottom-0 h-[524px] lg:inset-0 lg:h-full"
+            className="absolute inset-x-0 bottom-0 h-[524px] pointer-events-none lg:inset-0 lg:h-full"
             style={{
-              background:
-                'linear-gradient(180deg, rgba(255,255,255,0) 7.242%, rgba(255,255,255,0.4) 45%, #ffffff 61.522%)',
+              background: isDesktop
+                ? 'linear-gradient(180deg, rgba(255,255,255,0) 7.242%, rgba(255,255,255,0.4) 45%, #ffffff 61.522%)'
+                : 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.2) 25%, rgba(255,255,255,0.7) 50%, #ffffff 75%)',
             }}
           />
         </div>
       </div>
+      )}
 
       {/* Main Content Container */}
       <div className="relative z-10 w-full">
         {currentStep === 'login' ? (
           <LoginStep
             onWhatsAppClick={async () => {
-              // TODO: Implement actual WhatsApp code sending
-              console.log('Sending WhatsApp code...');
-              setPhoneNumber('999999999'); // Mock phone number
-              setCurrentStep('verify');
+              console.log('Navigating to phone input step...');
+              setCurrentStep('phone');
             }}
             onAppleClick={() => {
               // TODO: Implement Apple ID authentication
               console.log('Apple ID login clicked');
             }}
           />
-        ) : (
-          <VerifyStep
-            phoneNumber={phoneNumber}
-            onValidate={async (code) => {
-              console.log('Code validated:', code);
-              // TODO: Verify code with backend
-              router.push('/onboarding');
+        ) : currentStep === 'phone' ? (
+          <PhoneStep
+            onSubmit={(phone) => {
+              console.log('Phone number submitted:', phone);
+              setPhoneNumber(phone);
+              setCurrentStep('verify');
             }}
             onBack={() => {
               setCurrentStep('login');
               setPhoneNumber('');
             }}
           />
+        ) : (
+          <VerifyStep
+            phoneNumber={phoneNumber}
+            onValidate={async (code, isNewUser) => {
+              console.log('Code validated:', code, 'isNewUser:', isNewUser);
+
+              // New users go to onboarding, existing users go to dashboard
+              if (isNewUser) {
+                router.push('/onboarding');
+              } else {
+                router.push('/dashboard');
+              }
+            }}
+            onBack={() => {
+              setCurrentStep('phone');
+            }}
+          />
         )}
 
-        {/* Desktop Spotlight Cards - Only show on login step */}
-        {currentStep === 'login' && (
-          <div className="pointer-events-none absolute inset-0 hidden lg:block" aria-hidden="true">
+        {/* Desktop Spotlight Cards */}
+        <div className="pointer-events-none absolute inset-0 hidden lg:block" aria-hidden="true">
             <div className="flex h-full w-full items-center justify-center px-8">
-              <div className="relative w-full max-w-[1200px]">
+              <div className="relative w-full max-w-[1400px]">
                 <div className="flex items-center justify-between gap-16">
-                  <div className="flex-1" />
-                  <div className="relative flex flex-1 items-center justify-center">
-                    <div className="relative w-full max-w-[520px]">
+                  <div className="flex-[0.7]" />
+                  <div className="relative flex flex-[1.3] items-center justify-center">
+                    <div className="relative w-full max-w-[340px]">
                       {modelSpotlights.map((spotlight) => {
                         const baseRotation = `rotate(${spotlight.rotation}deg)`;
                         const parallaxTranslation = isDesktop
@@ -693,7 +1084,7 @@ export default function LoginPage() {
                               zIndex: spotlight.zIndex,
                               transform,
                               opacity: spotlightsReady ? 1 : 0,
-                              transition: `transform ${transitionDuration} ${transitionTimingFunction}, opacity 0.6s ease`,
+                              transition: `transform ${transitionDuration} ${transitionTimingFunction}, opacity 0.6s ease, top 0.8s cubic-bezier(0.16, 1, 0.3, 1), left 0.8s cubic-bezier(0.16, 1, 0.3, 1), right 0.8s cubic-bezier(0.16, 1, 0.3, 1), bottom 0.8s cubic-bezier(0.16, 1, 0.3, 1)`,
                               transitionDelay,
                             }}
                           >
@@ -725,8 +1116,7 @@ export default function LoginPage() {
                 </div>
               </div>
             </div>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

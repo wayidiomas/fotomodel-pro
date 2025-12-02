@@ -1,4 +1,4 @@
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 /**
@@ -6,8 +6,11 @@ import { NextResponse, type NextRequest } from 'next/server';
  * This ensures the session is refreshed on every request
  */
 export async function updateSession(request: NextRequest) {
+  const requestHeaders = new Headers(request.headers);
   let supabaseResponse = NextResponse.next({
-    request,
+    request: {
+      headers: requestHeaders,
+    },
   });
 
   const supabase = createServerClient(
@@ -15,37 +18,21 @@ export async function updateSession(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value;
+        getAll() {
+          return request.cookies.getAll();
         },
-        set(name: string, value: string, options: any) {
-          request.cookies.set({
-            name,
-            value,
-            ...options,
-          });
-          supabaseResponse = NextResponse.next({
-            request,
-          });
-          supabaseResponse.cookies.set({
-            name,
-            value,
-            ...options,
-          });
-        },
-        remove(name: string, options: any) {
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          });
-          supabaseResponse = NextResponse.next({
-            request,
-          });
-          supabaseResponse.cookies.set({
-            name,
-            value: '',
-            ...options,
+        setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            request.cookies.set({
+              name,
+              value,
+              ...options,
+            });
+            supabaseResponse.cookies.set({
+              name,
+              value,
+              ...options,
+            });
           });
         },
       },
@@ -55,10 +42,24 @@ export async function updateSession(request: NextRequest) {
   // Refresh session if expired - required for Server Components
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
 
+  const clearSupabaseCookies = () => {
+    request.cookies.getAll().forEach(({ name }) => {
+      if (name.startsWith('sb-')) {
+        request.cookies.delete(name);
+        supabaseResponse.cookies.delete(name);
+      }
+    });
+  };
+
+  if (userError?.message?.toLowerCase().includes('refresh token')) {
+    clearSupabaseCookies();
+  }
+
   // Public auth routes that don't require authentication
-  const publicAuthRoutes = ['/login', '/onboarding'];
+  const publicAuthRoutes = ['/login', '/onboarding', '/api/auth'];
   const isPublicAuthRoute = publicAuthRoutes.some(route =>
     request.nextUrl.pathname.startsWith(route)
   );

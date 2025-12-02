@@ -72,6 +72,26 @@ const config: Config = {
       },
       backgroundImage: {
         'gradient-overlay': 'linear-gradient(180deg, rgba(255,255,255,0) 7.242%, #ffffff 61.522%)',
+        'noise': "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E\")",
+      },
+      keyframes: {
+        shimmer: {
+          '100%': {
+            transform: 'translateX(100%)',
+          },
+        },
+        wave: {
+          '0%, 100%': {
+            transform: 'translateY(0)',
+          },
+          '50%': {
+            transform: 'translateY(-10px)',
+          },
+        },
+      },
+      animation: {
+        shimmer: 'shimmer 2s infinite',
+        wave: 'wave 3s ease-in-out infinite',
       },
     },
   },

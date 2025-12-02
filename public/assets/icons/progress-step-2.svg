@@ -1,0 +1,10 @@
+<svg preserveAspectRatio="none" width="100%" height="100%" overflow="visible" style="display: block;" viewBox="0 0 72 7" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Frame 15">
+<circle id="Ellipse 1" cx="3.5" cy="3.5" r="3.5" transform="matrix(1 0 0 -1 0 7)" fill="var(--fill-0, black)" fill-opacity="0.31"/>
+<g id="Frame 16">
+<rect x="13" width="33" height="7" rx="3.5" fill="var(--fill-0, black)"/>
+</g>
+<circle id="Ellipse 2" cx="3.5" cy="3.5" r="3.5" transform="matrix(1 0 0 -1 52 7)" fill="var(--fill-0, black)" fill-opacity="0.31"/>
+<circle id="Ellipse 4" cx="3.5" cy="3.5" r="3.5" transform="matrix(1 0 0 -1 65 7)" fill="var(--fill-0, black)" fill-opacity="0.31"/>
+</g>
+</svg>
