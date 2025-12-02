@@ -48,10 +48,10 @@ const toCSSPosition = (
  */
 function LoginStep({
   onWhatsAppClick,
-  onAppleClick,
+  onGoogleClick,
 }: {
   onWhatsAppClick: () => void;
-  onAppleClick: () => void;
+  onGoogleClick: () => void;
 }) {
   return (
     <>
@@ -90,20 +90,20 @@ function LoginStep({
                 </span>
               </button>
 
-              {/* Apple ID Button - 322px x 52px, 14px radius (Figma) */}
+              {/* Google Button - 322px x 52px, 14px radius (Figma) */}
               <button
-                className="group flex h-[52px] w-full items-center justify-center gap-2.5 rounded-[14px] bg-[#2c2c2c] px-2.5 py-2.5 transition-all duration-300 hover:scale-[1.02] hover:bg-black hover:shadow-xl active:scale-[0.98]"
-                onClick={onAppleClick}
+                className="group flex h-[52px] w-full items-center justify-center gap-2.5 rounded-[14px] border border-black/10 bg-white px-2.5 py-2.5 transition-all duration-300 hover:scale-[1.02] hover:bg-gray-50 hover:shadow-lg active:scale-[0.98]"
+                onClick={onGoogleClick}
               >
                 <Image
-                  src="/assets/icons/apple.svg"
-                  alt="Apple"
-                  width={18}
-                  height={22}
+                  src="/assets/icons/google.svg"
+                  alt="Google"
+                  width={20}
+                  height={20}
                   className="shrink-0 transition-transform duration-300 group-hover:scale-110"
                 />
-                <span className="font-haas text-[16px] font-medium leading-normal text-white">
-                  Entrar com Apple ID
+                <span className="font-haas text-[16px] font-medium leading-normal text-black">
+                  Entrar com Google
                 </span>
               </button>
             </div>
@@ -166,20 +166,20 @@ function LoginStep({
                   </span>
                 </button>
 
-                {/* Apple ID Button */}
+                {/* Google Button */}
                 <button
-                  className="group flex h-[48px] w-full items-center justify-center gap-2.5 rounded-xl bg-[#2c2c2c] px-6 py-4 transition-all duration-300 hover:scale-[1.02] hover:bg-black hover:shadow-[0_24px_45px_-24px_rgba(0,0,0,0.55)] active:scale-[0.98]"
-                  onClick={onAppleClick}
+                  className="group flex h-[48px] w-full items-center justify-center gap-2.5 rounded-xl border border-black/10 bg-white px-6 py-4 transition-all duration-300 hover:scale-[1.02] hover:bg-gray-50 hover:shadow-xl active:scale-[0.98]"
+                  onClick={onGoogleClick}
                 >
                   <Image
-                    src="/assets/icons/apple.svg"
-                    alt="Apple"
-                    width={20}
-                    height={24}
+                    src="/assets/icons/google.svg"
+                    alt="Google"
+                    width={22}
+                    height={22}
                     className="shrink-0 transition-transform duration-300 group-hover:scale-110"
                   />
-                  <span className="font-haas text-lg font-medium leading-normal text-white">
-                    Entrar com Apple ID
+                  <span className="font-haas text-lg font-medium leading-normal text-black">
+                    Entrar com Google
                   </span>
                 </button>
               </div>
@@ -1013,9 +1013,18 @@ export default function LoginPage() {
               console.log('Navigating to phone input step...');
               setCurrentStep('phone');
             }}
-            onAppleClick={() => {
-              // TODO: Implement Apple ID authentication
-              console.log('Apple ID login clicked');
+            onGoogleClick={async () => {
+              console.log('Google login clicked');
+              const supabase = createClient();
+              const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                  redirectTo: `${window.location.origin}/auth/callback`,
+                },
+              });
+              if (error) {
+                console.error('Google login error:', error);
+              }
             }}
           />
         ) : currentStep === 'phone' ? (
