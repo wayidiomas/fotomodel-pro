@@ -432,6 +432,11 @@ function ResultadoContent() {
       const apiResult = await response.json();
       console.log('API Result:', apiResult);
 
+      // Update credits after generation
+      if (typeof apiResult.creditsRemaining === 'number') {
+        setUserCredits(apiResult.creditsRemaining);
+      }
+
       // Fetch the generation results from database
       const { data: generationData, error: generationError } = await (supabase
         .from('generation_results') as any)
