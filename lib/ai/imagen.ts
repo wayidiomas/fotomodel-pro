@@ -1,23 +1,20 @@
 /**
- * Google Imagen 4 Integration (BETA)
+ * Gemini Image Generation Integration
  *
- * Currently using Gemini 2.5 Flash Image as backend for chat functionality.
- * This provides a compatible interface that can be swapped to Imagen 4 when ready.
+ * Uses Gemini 3 Pro Image Preview (Nano Banana Pro) for image generation.
+ * Configuration is loaded dynamically from the database via ai_generation_config table.
  *
- * Why Gemini 2.5 Flash Image for now:
- * - Already configured and working
- * - Supports multi-image composition (up to 3 images)
- * - Accepts natural language prompts
- * - Cheaper: $0.039/image vs $0.02-$0.06 for Imagen 4
- * - CRITICAL: Supports pose reference (Imagen 4 does NOT)
- *
- * Future Migration Path:
- * - Imagen 4 Standard: $0.04/image - Better quality, no pose control
- * - Imagen 4 Fast: $0.02/image - Faster generation
- * - Imagen 4 Ultra: $0.06/image - Highest quality
+ * Features:
+ * - Dynamic model configuration via database
+ * - Configurable image size: 1K, 2K, 4K
+ * - Up to 14 reference images (vs 3 in previous models)
+ * - Advanced text rendering
+ * - Thought signatures for multi-turn editing
+ * - Fallback to previous model if primary fails
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getAIConfig, type ImageSize } from './ai-config';
 
 const getGeminiClient = () => {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -30,10 +27,11 @@ const getGeminiClient = () => {
 };
 
 export type ImagenModel =
-  | 'imagen-4.0-generate-001'      // Standard quality
-  | 'imagen-4.0-fast-generate-001' // Fast generation
-  | 'imagen-4.0-ultra-generate-001' // Ultra quality
-  | 'gemini-2.5-flash-image';      // Current backend
+  | 'gemini-3-pro-image-preview'    // Nano Banana Pro - Current default
+  | 'gemini-2.5-flash-image'        // Fallback model
+  | 'imagen-4.0-generate-001'       // Standard quality
+  | 'imagen-4.0-fast-generate-001'  // Fast generation
+  | 'imagen-4.0-ultra-generate-001'; // Ultra quality
 
 export type ImagenAspectRatio = '1:1' | '2:3' | '3:2' | '3:4' | '4:3' | '4:5' | '5:4' | '9:16' | '16:9' | '21:9';
 
@@ -42,6 +40,7 @@ export interface ImagenGenerateOptions {
   negativePrompt?: string;
   aspectRatio?: ImagenAspectRatio;
   model?: ImagenModel;
+  imageSize?: ImageSize; // 1K, 2K, or 4K - loaded from config if not specified
   images?: Array<{
     data: string; // Base64 encoded
     mimeType: string;
@@ -87,7 +86,9 @@ function extractImageFromResponse(response: any): string | null {
 }
 
 /**
- * Generate image using Imagen 4 (currently Gemini 2.5 Flash Image)
+ * Generate image using Gemini 3 Pro Image (Nano Banana Pro)
+ *
+ * Configuration is loaded from the database. Falls back to previous model if primary fails.
  *
  * @param options - Generation options
  * @returns Image result with base64 data
@@ -95,20 +96,28 @@ function extractImageFromResponse(response: any): string | null {
 export async function generateWithImagen(
   options: ImagenGenerateOptions
 ): Promise<ImagenResult> {
+  // Load config from database
+  const config = await getAIConfig();
+
+  const modelId = options.model || (config.modelId as ImagenModel);
+  const imageSize = options.imageSize || config.imageSize;
+
   try {
     const client = getGeminiClient();
-    const modelId = options.model || 'gemini-2.5-flash-image';
 
-    // Configure generation
+    // Configure generation with new Gemini 3 Pro parameters
     const generationConfig: any = {
-      response_modalities: ['Image'], // Image only, no text
+      response_modalities: ['IMAGE'], // Note: uppercase for Gemini 3 Pro
+    };
+
+    // Build image_config with aspect ratio and size
+    generationConfig.image_config = {
+      image_size: imageSize, // 1K, 2K, or 4K
     };
 
     // Set aspect ratio if specified
     if (options.aspectRatio) {
-      generationConfig.image_config = {
-        aspect_ratio: options.aspectRatio,
-      };
+      generationConfig.image_config.aspect_ratio = options.aspectRatio;
     }
 
     const model = client.getGenerativeModel({
@@ -143,6 +152,15 @@ export async function generateWithImagen(
     const imageData = extractImageFromResponse(response);
 
     if (!imageData) {
+      // Try fallback model if primary failed
+      if (modelId !== config.fallbackModelId) {
+        console.warn(`Primary model ${modelId} failed, trying fallback ${config.fallbackModelId}`);
+        return generateWithImagen({
+          ...options,
+          model: config.fallbackModelId as ImagenModel,
+        });
+      }
+
       return {
         success: false,
         error: 'Não recebemos a imagem da IA. Aguarde alguns segundos e tente novamente.',
@@ -157,7 +175,17 @@ export async function generateWithImagen(
       model: modelId,
     };
   } catch (error) {
-    console.error('Error generating image with Imagen:', error);
+    console.error('Error generating image with Gemini:', error);
+
+    // Try fallback model on error
+    if (modelId !== config.fallbackModelId) {
+      console.warn(`Primary model ${modelId} errored, trying fallback ${config.fallbackModelId}`);
+      return generateWithImagen({
+        ...options,
+        model: config.fallbackModelId as ImagenModel,
+      });
+    }
+
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

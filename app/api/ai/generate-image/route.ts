@@ -1,8 +1,10 @@
 /**
  * POST /api/ai/generate-image
- * Generate virtual try-on images using Gemini 2.5 Flash with AI-optimized prompts
+ * Generate virtual try-on images using Gemini 3 Pro Image (Nano Banana Pro)
  *
- * New Flow:
+ * Configuration loaded dynamically from ai_generation_config table.
+ *
+ * Flow:
  * 1. Validate user and authentication
  * 2. Load garment images and pose selection from database
  * 3. Load customization data (height, weight, expression, AI tools)
@@ -11,21 +13,20 @@
  * 6. Check user has sufficient credits
  * 7. Create generation record with tool_id
  * 8. Fetch images as base64
- * 8.5. Optimize prompt with Gemini 2.0 Flash (NEW)
+ * 8.5. Optimize prompt with Gemini (model from config)
  *      - Build structured JSON input with all customization data
- *      - Call Gemini 2.0 Flash to generate optimized English prompt
+ *      - Call Gemini to generate optimized English prompt
  *      - Save generated prompt to ai_generated_prompts table
  *      - On failure: return error and ask user to retry (credits not yet debited)
- * 9. Generate virtual try-on image with Gemini 2.5 Flash (using optimized prompt)
- * 10. Apply AI edits sequentially if requested (background removed for now)
+ * 9. Generate virtual try-on image (model from config, with fallback)
+ * 10. Apply AI edits sequentially if requested
  * 11. Apply background change as separate step (if enabled)
- * 12. Add watermark to final image
- * 13. Upload to storage and create thumbnail
- * 14. Save generation result
- * 15. Save AI edits records
- * 16. Update generation status
- * 17. Debit user credits
- * 18. Return results
+ * 12. Upload to storage and create thumbnail
+ * 13. Save generation result
+ * 14. Save AI edits records
+ * 15. Update generation status
+ * 16. Debit user credits
+ * 17. Return results
  */
 
 import { NextRequest, NextResponse } from 'next/server';
