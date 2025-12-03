@@ -143,8 +143,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { uploadIds, regenerationType } = body;
-    const skipWatermark =
-      regenerationType === 'feedback' || regenerationType === 'improvement';
+    // Watermark disabled - always skip
+    const skipWatermark = true;
 
     // Validate inputs
     if (!uploadIds || !Array.isArray(uploadIds) || uploadIds.length === 0) {

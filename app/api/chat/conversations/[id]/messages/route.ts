@@ -11,7 +11,7 @@ import { analyzeConversation, type ChatMessage, type ChatAttachment, buildSimple
 import { generateChatTitle } from '@/lib/chat/title-generator';
 import { generateWithImagen } from '@/lib/ai/imagen';
 import { calculateChatCredits } from '@/lib/credits/credit-calculator';
-import { addWatermark, base64ToBuffer, bufferToBase64 } from '@/lib/images/watermark';
+import { base64ToBuffer, bufferToBase64 } from '@/lib/images/watermark';
 
 const SIMPLE_GREETINGS = [
   'oi',
@@ -631,10 +631,9 @@ export async function POST(
       }, { status: 500 });
     }
 
-    // Add watermark
+    // Watermark disabled - use original image
     const imageBuffer = base64ToBuffer(`data:image/png;base64,${imageResult.imageData}`);
-    const watermarkedBuffer = await addWatermark(imageBuffer);
-    const watermarkedBase64 = bufferToBase64(watermarkedBuffer, 'image/png');
+    const imageBase64 = bufferToBase64(imageBuffer, 'image/png');
 
     // Create generation record
     const { data: generation, error: genError } = await (supabase
@@ -672,8 +671,8 @@ export async function POST(
       .from('generation_results') as any)
       .insert({
         generation_id: generation.id,
-        image_url: watermarkedBase64, // TODO: Upload to Supabase Storage
-        has_watermark: true,
+        image_url: imageBase64, // TODO: Upload to Supabase Storage
+        has_watermark: false,
         metadata: {
           cleanImageData: imageResult.imageData,
         },
