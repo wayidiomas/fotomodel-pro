@@ -104,8 +104,27 @@ export async function checkBubbleUserExists(
     const data: BubbleResponse = await response.json();
     console.log('[Bubble] 📦 API Response Data:', JSON.stringify(data, null, 2));
 
-    if (data.results && data.results.length > 0) {
-      const bubbleUser = data.results[0];
+    // Debug the response structure
+    console.log('[Bubble] 🔍 Debug checks:');
+    console.log('[Bubble] - typeof data:', typeof data);
+    console.log('[Bubble] - data.response exists?', 'response' in data);
+    console.log('[Bubble] - data.results exists?', 'results' in data);
+    console.log('[Bubble] - data.results type:', typeof data.results);
+    console.log('[Bubble] - data.results isArray?', Array.isArray(data.results));
+    console.log('[Bubble] - data.results length:', data.results?.length);
+    console.log('[Bubble] - data.count:', (data as any).count);
+
+    // Check if results are nested in response
+    const actualData = (data as any).response || data;
+    const results = actualData.results;
+
+    console.log('[Bubble] 🔍 After extraction:');
+    console.log('[Bubble] - results exists?', !!results);
+    console.log('[Bubble] - results isArray?', Array.isArray(results));
+    console.log('[Bubble] - results length:', results?.length);
+
+    if (results && Array.isArray(results) && results.length > 0) {
+      const bubbleUser = results[0];
       console.log('[Bubble] ✅✅✅ User found in Bubble!', {
         bubbleId: bubbleUser._id,
         email: bubbleUser['Email txt'],
@@ -121,7 +140,7 @@ export async function checkBubbleUserExists(
     }
 
     console.log('[Bubble] ❌ No user found with email:', bubbleEmail);
-    console.log('[Bubble] Response had', data.results?.length || 0, 'results');
+    console.log('[Bubble] Response had', results?.length || 0, 'results');
     console.log('='.repeat(80));
     return { exists: false };
   } catch (error) {
