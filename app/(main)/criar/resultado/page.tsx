@@ -313,7 +313,7 @@ function ResultadoContent() {
         }
 
         // Check if there's already a completed generation for these uploadIds
-        const { data: existingGeneration } = await (supabase
+        const { data: existingGenerations, error: genError } = await (supabase
           .from('generations') as any)
           .select(`
             id,
@@ -332,8 +332,14 @@ function ResultadoContent() {
           .eq('status', 'completed')
           .contains('input_data', { uploadIds })
           .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+          .limit(1);
+
+        // Ignore PGRST116 (no rows found) - it's expected when there's no completed generation yet
+        if (genError && genError.code !== 'PGRST116') {
+          console.error('Error fetching existing generation:', genError);
+        }
+
+        const existingGeneration = existingGenerations?.[0];
 
         // If we have an existing completed generation, load its results
         if (existingGeneration && existingGeneration.generation_results?.length > 0) {
