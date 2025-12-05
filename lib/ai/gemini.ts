@@ -744,9 +744,10 @@ export async function virtualTryOn(
   const garmentImages = Array.isArray(options.garmentImageData)
     ? options.garmentImageData
     : [options.garmentImageData];
-  const garmentMimeTypes = Array.isArray(options.garmentMimeType)
+  const defaultMimeType = typeof options.garmentMimeType === 'string' ? options.garmentMimeType : 'image/png';
+  const garmentMimeTypes: string[] = Array.isArray(options.garmentMimeType)
     ? options.garmentMimeType
-    : garmentImages.map(() => options.garmentMimeType || 'image/png');
+    : garmentImages.map(() => defaultMimeType);
 
   const totalImages = garmentImages.length + 1 + (hasBackground ? 1 : 0); // garments + pose + optional background
 
@@ -895,9 +896,10 @@ async function virtualTryOnWithModel(
     const garmentImages = Array.isArray(options.garmentImageData)
       ? options.garmentImageData
       : [options.garmentImageData];
-    const garmentMimeTypes = Array.isArray(options.garmentMimeType)
+    const defaultMimeType = typeof options.garmentMimeType === 'string' ? options.garmentMimeType : 'image/png';
+    const garmentMimeTypes: string[] = Array.isArray(options.garmentMimeType)
       ? options.garmentMimeType
-      : garmentImages.map(() => options.garmentMimeType || 'image/png');
+      : garmentImages.map(() => defaultMimeType);
 
     const totalImages = garmentImages.length + 1 + (hasBackground ? 1 : 0);
     console.log(`[virtualTryOnWithModel] Fallback with ${totalImages} images (${garmentImages.length} garment(s) + pose${hasBackground ? ' + background' : ''}), model: ${modelId}`);
