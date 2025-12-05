@@ -1,0 +1,45 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build outputs
+.next
+out
+build
+dist
+
+# Cache
+.cache
+*.cache
+.npm
+.eslintcache
+
+# Environment files (handled by Railway)
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Testing
+coverage
+
+# Misc
+*.md
+!README.md
+.git
+.gitignore
