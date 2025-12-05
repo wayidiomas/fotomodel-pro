@@ -633,7 +633,7 @@ function ResultadoContent() {
 
       // Store draft with improve_reference attachment
       const draft = {
-        message: '',
+        message: 'O que você gostaria de melhorar nesta imagem? ',
         attachments: [{
           type: 'improve_reference',
           url: result.image_url,
