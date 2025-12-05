@@ -173,7 +173,10 @@ export async function POST(request: NextRequest) {
     if (!existingPublicUser) {
       // User doesn't exist - create new user in auth.users
       // The database trigger will automatically create the public.users record
-      console.log('[verify-otp] Creating new user for phone:', phone);
+      console.log('🆕'.repeat(40));
+      console.log('[verify-otp] 🆕 CREATING NEW USER');
+      console.log('[verify-otp] Phone:', phone);
+
       const { data: newAuthUser, error: createAuthUserError } = await supabase.auth.admin.createUser({
         phone,
         phone_confirm: true, // Auto-confirm phone since we verified OTP
@@ -183,8 +186,9 @@ export async function POST(request: NextRequest) {
       });
 
       if (createAuthUserError || !newAuthUser.user) {
-        console.error('[verify-otp] Error creating auth user:', createAuthUserError);
+        console.error('[verify-otp] ❌ Error creating auth user:', createAuthUserError);
         console.error('[verify-otp] Full error details:', JSON.stringify(createAuthUserError, null, 2));
+        console.log('🆕'.repeat(40));
         return NextResponse.json(
           {
             error: 'Failed to create user account',
@@ -194,19 +198,21 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      console.log('[verify-otp] Auth user created successfully:', newAuthUser.user.id);
+      console.log('[verify-otp] ✅ Auth user created successfully:', newAuthUser.user.id);
       userId = newAuthUser.user.id;
       isNewUser = true;
 
       // Check if user exists in Bubble and update the public.users record
       // Bubble stores emails as {phone}@fotomodel.com
-      console.log('[verify-otp] Checking Bubble user existence for phone:', phone);
+      console.log('[verify-otp] 🔍 Checking Bubble user existence for phone:', phone);
       const bubbleCheck = await checkBubbleUserExists(phone);
-      console.log('[verify-otp] Bubble check result:', bubbleCheck);
+      console.log('[verify-otp] 📋 Bubble check result:', JSON.stringify(bubbleCheck, null, 2));
 
       // Update the public.users record (created by trigger) with Bubble info if applicable
       if (bubbleCheck.exists) {
-        console.log('[verify-otp] 🎉 Bubble user detected! Granting 50 bonus credits...');
+        console.log('[verify-otp] 🎉🎉🎉 Bubble user detected! Granting 50 bonus credits...');
+        console.log('[verify-otp] Bubble User ID:', bubbleCheck.bubbleUserId);
+        console.log('[verify-otp] Updating user ID:', userId);
 
         // Give 50 bonus credits (10 initial + 40 bonus = 50 total)
         const { error: updateBubbleError } = await supabase
@@ -220,56 +226,29 @@ export async function POST(request: NextRequest) {
           .eq('id', userId);
 
         if (updateBubbleError) {
-          console.error('[verify-otp] Error updating Bubble data:', updateBubbleError);
+          console.error('[verify-otp] ❌❌❌ Error updating Bubble data:', updateBubbleError);
+          console.error('[verify-otp] Update error details:', JSON.stringify(updateBubbleError, null, 2));
           // Don't fail the whole flow, just log the error
         } else {
-          console.log(`✅ Bubble user setup complete:`, {
+          console.log(`[verify-otp] ✅✅✅ Bubble user setup complete:`, {
             userId,
             phone,
             bubbleId: bubbleCheck.bubbleUserId,
-            credits: 50
+            credits: 50,
+            bubble_welcome_shown: false
           });
         }
+      } else {
+        console.log('[verify-otp] ℹ️ User NOT found in Bubble - keeping default 10 credits');
       }
+      console.log('🆕'.repeat(40));
     } else {
       // User exists - use existing user ID
+      console.log('[verify-otp] ℹ️ Existing user - no Bubble check (popup only for new users)');
+      console.log('[verify-otp] User ID:', existingPublicUser.id);
+      console.log('[verify-otp] Current credits:', existingPublicUser.credits);
       userId = existingPublicUser.id;
       isNewUser = false;
-
-      // Check if this existing user should be migrated from Bubble
-      // Only check if not already marked as Bubble user
-      if (!existingPublicUser.migrated_from_bubble) {
-        console.log('[verify-otp] Existing user - checking Bubble migration for phone:', phone);
-        const bubbleCheck = await checkBubbleUserExists(phone);
-        console.log('[verify-otp] Bubble check result for existing user:', bubbleCheck);
-
-        if (bubbleCheck.exists) {
-          console.log('[verify-otp] 🎉 Existing user is a Bubble user! Upgrading account...');
-
-          // Update user with Bubble data
-          const { error: updateBubbleError } = await supabase
-            .from('users')
-            .update({
-              migrated_from_bubble: true,
-              bubble_user_id: bubbleCheck.bubbleUserId,
-              bubble_welcome_shown: false,
-              credits: 50, // Upgrade to 50 credits
-            })
-            .eq('id', userId);
-
-          if (updateBubbleError) {
-            console.error('[verify-otp] Error updating existing user with Bubble data:', updateBubbleError);
-          } else {
-            console.log(`✅ Existing user upgraded to Bubble user:`, {
-              userId,
-              phone,
-              bubbleId: bubbleCheck.bubbleUserId,
-              previousCredits: existingPublicUser.credits,
-              newCredits: 50
-            });
-          }
-        }
-      }
     }
 
     // Create a session for the user using admin API

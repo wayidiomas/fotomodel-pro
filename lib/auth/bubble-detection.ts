@@ -31,16 +31,26 @@ export async function checkBubbleUserExists(
   phoneOrEmail: string | null
 ): Promise<{ exists: boolean; bubbleUserId?: string; bubbleData?: BubbleUser }> {
   try {
+    console.log('='.repeat(80));
+    console.log('[Bubble] 🔍 Starting Bubble user detection...');
+    console.log('[Bubble] Input phoneOrEmail:', phoneOrEmail);
+
     if (!phoneOrEmail) {
-      console.log('[Bubble] No phone or email provided - skipping Bubble detection');
+      console.log('[Bubble] ❌ No phone or email provided - skipping Bubble detection');
+      console.log('='.repeat(80));
       return { exists: false };
     }
 
     const bubbleApiUrl = process.env.BUBBLE_API_URL;
     const bubbleApiToken = process.env.BUBBLE_API_TOKEN;
 
+    console.log('[Bubble] Environment check:');
+    console.log('[Bubble] - BUBBLE_API_URL:', bubbleApiUrl ? '✓ SET' : '✗ MISSING');
+    console.log('[Bubble] - BUBBLE_API_TOKEN:', bubbleApiToken ? '✓ SET (length: ' + bubbleApiToken.length + ')' : '✗ MISSING');
+
     if (!bubbleApiUrl || !bubbleApiToken) {
-      console.warn('[Bubble] API credentials not configured - skipping Bubble user detection');
+      console.warn('[Bubble] ❌ API credentials not configured - skipping Bubble user detection');
+      console.log('='.repeat(80));
       return { exists: false };
     }
 
@@ -62,7 +72,7 @@ export async function checkBubbleUserExists(
       console.log('[Bubble] Constructed email from clean phone:', bubbleEmail);
     }
 
-    console.log('[Bubble] Checking for user with email:', bubbleEmail);
+    console.log('[Bubble] 🎯 Checking for user with email:', bubbleEmail);
 
     // Query Bubble API for user with matching email (using "Email txt" field)
     const constraints = JSON.stringify([
@@ -70,6 +80,8 @@ export async function checkBubbleUserExists(
     ]);
 
     const url = `${bubbleApiUrl}/obj/user?constraints=${encodeURIComponent(constraints)}&limit=1`;
+    console.log('[Bubble] 📡 API Request URL:', url);
+    console.log('[Bubble] 📡 Constraints:', constraints);
 
     const response = await fetch(url, {
       method: 'GET',
@@ -79,23 +91,28 @@ export async function checkBubbleUserExists(
       },
     });
 
+    console.log('[Bubble] 📡 API Response Status:', response.status, response.statusText);
+
     if (!response.ok) {
-      console.error('[Bubble] API error:', response.status, response.statusText);
+      console.error('[Bubble] ❌ API error:', response.status, response.statusText);
       const errorText = await response.text();
-      console.error('[Bubble] Error details:', errorText);
+      console.error('[Bubble] ❌ Error details:', errorText);
+      console.log('='.repeat(80));
       return { exists: false };
     }
 
     const data: BubbleResponse = await response.json();
+    console.log('[Bubble] 📦 API Response Data:', JSON.stringify(data, null, 2));
 
     if (data.results && data.results.length > 0) {
       const bubbleUser = data.results[0];
-      console.log('[Bubble] ✅ User found in Bubble!', {
+      console.log('[Bubble] ✅✅✅ User found in Bubble!', {
         bubbleId: bubbleUser._id,
         email: bubbleUser['Email txt'],
         credits: bubbleUser['Créditos'],
         name: bubbleUser['Nome']
       });
+      console.log('='.repeat(80));
       return {
         exists: true,
         bubbleUserId: bubbleUser._id,
@@ -104,9 +121,13 @@ export async function checkBubbleUserExists(
     }
 
     console.log('[Bubble] ❌ No user found with email:', bubbleEmail);
+    console.log('[Bubble] Response had', data.results?.length || 0, 'results');
+    console.log('='.repeat(80));
     return { exists: false };
   } catch (error) {
-    console.error('[Bubble] Error checking user existence:', error);
+    console.error('[Bubble] ❌❌❌ Error checking user existence:', error);
+    console.error('[Bubble] Error stack:', error instanceof Error ? error.stack : 'No stack');
+    console.log('='.repeat(80));
     // Don't fail the authentication if Bubble check fails
     return { exists: false };
   }
