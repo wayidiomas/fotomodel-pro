@@ -38,7 +38,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       <div className="mx-auto max-w-5xl px-6 py-8">
         <div className="space-y-6">
           {/* Edit Context - Shows the image being edited from /criar flow */}
-          {editContext && messages.length === 0 && (
+          {editContext && (
             <div className="flex items-start gap-3">
               <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#20202a] to-[#2a2a35] text-white">
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -53,7 +53,9 @@ export const MessageList: React.FC<MessageListProps> = ({
               <div className="flex-1 space-y-3">
                 <div className="rounded-2xl border border-white/60 bg-white/80 px-4 py-3 shadow">
                   <p className="font-inter text-sm text-gray-900">
-                    Aqui está a imagem que você quer editar. Descreva as alterações desejadas:
+                    {messages.length === 0
+                      ? "Aqui está a imagem que você quer editar. Descreva as alterações desejadas:"
+                      : "Imagem de referência para edição:"}
                   </p>
                 </div>
                 <div className="relative w-fit overflow-hidden rounded-2xl border border-white/60 bg-white/80 shadow-lg">
@@ -82,9 +84,11 @@ export const MessageList: React.FC<MessageListProps> = ({
                     </button>
                   )}
                 </div>
-                <p className="font-inter text-xs text-gray-500">
-                  Exemplos: "mude a cor da camisa para azul", "coloque num fundo de praia", "deixe a modelo com cabelo mais curto"
-                </p>
+                {messages.length === 0 && (
+                  <p className="font-inter text-xs text-gray-500">
+                    Exemplos: "mude a cor da camisa para azul", "coloque num fundo de praia", "deixe a modelo com cabelo mais curto"
+                  </p>
+                )}
               </div>
             </div>
           )}

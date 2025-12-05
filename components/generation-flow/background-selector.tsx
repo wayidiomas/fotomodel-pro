@@ -58,6 +58,10 @@ export function BackgroundSelector({
   );
   const [uploadError, setUploadError] = React.useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = React.useState<string>('all');
+  // AI background states (for future AI background generation feature)
+  const [aiPreview, setAiPreview] = React.useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = React.useState<string>('');
+  const [aiError, setAiError] = React.useState<string | null>(null);
 
   // Handle preset selection
   const handlePresetSelect = (preset: BackgroundPreset) => {

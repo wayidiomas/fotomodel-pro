@@ -13,7 +13,7 @@ import { BuyCreditsModal } from '@/components/subscription/buy-credits-modal';
 import { useUserCredits } from '@/lib/hooks/use-queries';
 
 interface MainHeaderProps {
-  currentPage?: 'dashboard' | 'criar' | 'vestuario' | 'galeria' | 'modelos' | 'historico' | 'chat';
+  currentPage?: 'dashboard' | 'criar' | 'vestuario' | 'galeria' | 'modelos' | 'historico' | 'chat' | 'curtidas';
   credits?: number;
 }
 

@@ -18,17 +18,30 @@ import { createClient } from '@/lib/supabase/server';
 import { stripe, stripeEnv } from '@/lib/stripe/client';
 import Stripe from 'stripe';
 
+// Type helpers for Stripe API compatibility
+// The Stripe API returns these fields but TypeScript types may not include them
+interface SubscriptionWithPeriod extends Stripe.Subscription {
+  current_period_start: number;
+  current_period_end: number;
+}
+
+interface InvoiceWithSubscription extends Stripe.Invoice {
+  subscription: string | Stripe.Subscription | null;
+}
+
 // Configuração do webhook secret baseada no ambiente
-const webhookSecret = stripeEnv === 'live'
+const webhookSecretRaw = stripeEnv === 'live'
   ? process.env.STRIPE_WEBHOOK_SECRET_LIVE
   : process.env.STRIPE_WEBHOOK_SECRET_TEST;
 
-if (!webhookSecret) {
+if (!webhookSecretRaw) {
   throw new Error(
     `Missing Stripe webhook secret for environment: ${stripeEnv}. ` +
     `Please set STRIPE_WEBHOOK_SECRET_${stripeEnv.toUpperCase()} in your .env file.`
   );
 }
+
+const webhookSecret: string = webhookSecretRaw;
 
 export async function POST(request: NextRequest) {
   try {
@@ -65,23 +78,23 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'customer.subscription.created':
-        await handleSubscriptionCreated(event.data.object as Stripe.Subscription);
+        await handleSubscriptionCreated(event.data.object as SubscriptionWithPeriod);
         break;
 
       case 'customer.subscription.updated':
-        await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
+        await handleSubscriptionUpdated(event.data.object as SubscriptionWithPeriod);
         break;
 
       case 'customer.subscription.deleted':
-        await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+        await handleSubscriptionDeleted(event.data.object as SubscriptionWithPeriod);
         break;
 
       case 'invoice.payment_succeeded':
-        await handleInvoicePaymentSucceeded(event.data.object as Stripe.Invoice);
+        await handleInvoicePaymentSucceeded(event.data.object as InvoiceWithSubscription);
         break;
 
       case 'invoice.payment_failed':
-        await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+        await handleInvoicePaymentFailed(event.data.object as InvoiceWithSubscription);
         break;
 
       default:
@@ -143,7 +156,7 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
  * Subscription Created
  * Chamado quando uma nova assinatura é criada
  */
-async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
+async function handleSubscriptionCreated(subscription: SubscriptionWithPeriod) {
   console.log(`✅ Subscription created: ${subscription.id}`);
 
   const supabase = await createClient();
@@ -223,7 +236,7 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
  * Subscription Updated
  * Chamado quando uma assinatura é atualizada
  */
-async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
+async function handleSubscriptionUpdated(subscription: SubscriptionWithPeriod) {
   console.log(`✅ Subscription updated: ${subscription.id}`);
 
   const supabase = await createClient();
@@ -280,7 +293,7 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
  * Subscription Deleted (Cancelled)
  * Chamado quando uma assinatura é cancelada
  */
-async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
+async function handleSubscriptionDeleted(subscription: SubscriptionWithPeriod) {
   console.log(`✅ Subscription deleted: ${subscription.id}`);
 
   const supabase = await createClient();
@@ -345,7 +358,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
  * Chamado quando um pagamento é bem-sucedido
  * Usado para recarregar créditos mensais
  */
-async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
+async function handleInvoicePaymentSucceeded(invoice: InvoiceWithSubscription) {
   console.log(`✅ Invoice payment succeeded: ${invoice.id}`);
 
   const supabase = await createClient();
@@ -427,7 +440,7 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
  * Invoice Payment Failed
  * Chamado quando um pagamento falha
  */
-async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+async function handleInvoicePaymentFailed(invoice: InvoiceWithSubscription) {
   console.log(`❌ Invoice payment failed: ${invoice.id}`);
 
   const supabase = await createClient();

@@ -19,68 +19,68 @@ interface DashboardWrapperProps {
 
 // Transform raw data to CarouselItem format
 function transformWardrobeItems(items: any[]): CarouselItem[] {
-  return items
-    .map((item: any) => {
-      const upload = item.upload;
-      if (!upload) return null;
+  const result: CarouselItem[] = [];
+  for (const item of items) {
+    const upload = item.upload;
+    if (!upload) continue;
 
-      const imageUrl =
-        (upload.metadata as any)?.publicUrl ||
-        getStoragePublicUrl(upload.thumbnail_path, 'user-uploads') ||
-        getStoragePublicUrl(upload.file_path, 'user-uploads');
+    const imageUrl =
+      (upload.metadata as any)?.publicUrl ||
+      getStoragePublicUrl(upload.thumbnail_path, 'user-uploads') ||
+      getStoragePublicUrl(upload.file_path, 'user-uploads');
 
-      if (!imageUrl) return null;
-      const metadata = upload.metadata as Record<string, any> || {};
-      return {
-        id: item.id,
-        type: 'upload' as const,
-        imageUrl,
-        title: upload.file_name || 'Peça',
-        subtitle: item.garment_type || metadata?.garmentMetadata?.category || '',
-        createdAt: item.created_at,
-        metadata: {
-          category: item.garment_type || metadata?.garmentMetadata?.category,
-        },
-      };
-    })
-    .filter((item): item is CarouselItem => item !== null);
+    if (!imageUrl) continue;
+    const metadata = upload.metadata as Record<string, any> || {};
+    result.push({
+      id: item.id,
+      type: 'upload',
+      imageUrl,
+      title: upload.file_name || 'Peça',
+      subtitle: item.garment_type || metadata?.garmentMetadata?.category || '',
+      createdAt: item.created_at,
+      metadata: {
+        category: item.garment_type || metadata?.garmentMetadata?.category,
+      },
+    });
+  }
+  return result;
 }
 
 function transformModels(models: any[]): CarouselItem[] {
-  return models
-    .map((model: any) => {
-      const imageUrl = getStoragePublicUrl(model.thumbnail_url || model.image_url);
-      if (!imageUrl) return null;
-      return {
-        id: model.id,
-        type: 'model' as const,
-        imageUrl,
-        title: model.model_name || 'Modelo',
-        subtitle: [model.gender, model.age_range].filter(Boolean).join(' • '),
-        createdAt: model.created_at,
-        metadata: {
-          gender: model.gender,
-          age_range: model.age_range,
-        },
-      };
-    })
-    .filter((item): item is CarouselItem => item !== null);
+  const result: CarouselItem[] = [];
+  for (const model of models) {
+    const imageUrl = getStoragePublicUrl(model.thumbnail_url || model.image_url);
+    if (!imageUrl) continue;
+    result.push({
+      id: model.id,
+      type: 'model',
+      imageUrl,
+      title: model.model_name || 'Modelo',
+      subtitle: [model.gender, model.age_range].filter(Boolean).join(' • '),
+      createdAt: model.created_at,
+      metadata: {
+        gender: model.gender,
+        age_range: model.age_range,
+      },
+    });
+  }
+  return result;
 }
 
 function transformDownloads(downloads: any[]): CarouselItem[] {
-  return downloads
-    .map((download: any) => {
-      const imageUrl = getStoragePublicUrl(download.thumbnail_url || download.image_url);
-      if (!imageUrl) return null;
-      return {
-        id: download.id,
-        type: 'download' as const,
-        imageUrl,
-        title: 'Download',
-        createdAt: download.downloaded_at,
-      };
-    })
-    .filter((item): item is CarouselItem => item !== null);
+  const result: CarouselItem[] = [];
+  for (const download of downloads) {
+    const imageUrl = getStoragePublicUrl(download.thumbnail_url || download.image_url);
+    if (!imageUrl) continue;
+    result.push({
+      id: download.id,
+      type: 'download',
+      imageUrl,
+      title: 'Download',
+      createdAt: download.downloaded_at,
+    });
+  }
+  return result;
 }
 
 export function DashboardWrapper({

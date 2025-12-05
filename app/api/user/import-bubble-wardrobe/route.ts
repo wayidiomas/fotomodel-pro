@@ -114,7 +114,7 @@ function fixImageUrl(bubbleUrl?: string): string | null {
   return bubbleUrl;
 }
 
-function generateFileName(categoria?: string, index: number): string {
+function generateFileName(categoria: string | undefined, index: number): string {
   const timestamp = Date.now();
   const categorySlug = categoria?.toLowerCase().replace(/\s+/g, '-') || 'peca';
   return `${categorySlug}-${timestamp}-${index}.jpg`;

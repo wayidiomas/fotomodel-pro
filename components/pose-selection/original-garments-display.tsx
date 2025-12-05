@@ -3,7 +3,6 @@
 import * as React from 'react';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
-import type { GarmentImage } from '@/lib/generation-flow/types';
 
 interface OriginalGarmentsDisplayProps {
   uploadIds: string[];

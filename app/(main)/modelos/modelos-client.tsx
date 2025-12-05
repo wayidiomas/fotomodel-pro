@@ -161,7 +161,7 @@ export const ModelosClient: React.FC<ModelosClientProps> = ({
         return filterAgeRanges.some((range) => {
           const option = AGE_RANGE_OPTIONS.find((opt) => opt.value === range);
           if (!option) return true;
-          return model.age_min <= option.max && model.age_max >= option.min;
+          return (model.age_min ?? 0) <= option.max && (model.age_max ?? 100) >= option.min;
         });
       });
     }
@@ -189,7 +189,7 @@ export const ModelosClient: React.FC<ModelosClientProps> = ({
         return filterAgeRanges.some((range) => {
           const option = AGE_RANGE_OPTIONS.find((opt) => opt.value === range);
           if (!option) return true;
-          return pose.age_min <= option.max && pose.age_max >= option.min;
+          return (pose.age_min ?? 0) <= option.max && (pose.age_max ?? 100) >= option.min;
         });
       });
     }

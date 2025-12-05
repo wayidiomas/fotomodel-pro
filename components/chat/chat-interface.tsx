@@ -61,17 +61,21 @@ export interface ChatMessage {
 }
 
 export interface ChatAttachment {
-  type: 'garment' | 'background' | 'model';
+  type: 'garment' | 'background' | 'model' | 'improve_reference';
   referenceId?: string;
   url: string;
   base64Data?: string;
   mimeType?: string;
+  attachedAt?: string;
   metadata?: {
     name?: string;
     gender?: string;
     ageRange?: string;
     heightCm?: number;
     weightKg?: number;
+    generationId?: string;
+    imageUrl?: string;
+    sourceResultId?: string;
     [key: string]: any;
   };
 }
@@ -111,13 +115,23 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
+      console.log('[ChatInterface] 🔍 Loading drafts from localStorage...');
       const stored = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+      console.log('[ChatInterface] 📦 Raw stored data:', stored);
+
       if (stored) {
         const parsed = JSON.parse(stored);
-        setDrafts(Array.isArray(parsed) ? {} : parsed || {});
+        console.log('[ChatInterface] 📋 Parsed drafts:', parsed);
+        console.log('[ChatInterface] 📊 Draft keys:', Object.keys(parsed));
+
+        const draftsToLoad = Array.isArray(parsed) ? {} : parsed || {};
+        setDrafts(draftsToLoad);
+        console.log('[ChatInterface] ✅ Drafts loaded:', draftsToLoad);
+      } else {
+        console.log('[ChatInterface] ℹ️ No drafts found in localStorage');
       }
     } catch (error) {
-      console.error('Erro ao carregar rascunhos do chat:', error);
+      console.error('[ChatInterface] ❌ Erro ao carregar rascunhos do chat:', error);
     }
   }, []);
 
@@ -130,6 +144,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           message: draft.message,
           attachments: draft.attachments
             // Filter out background attachments as they're too large for localStorage
+            // Keep improve_reference attachments as they only have URLs
             .filter((att) => att.type !== 'background')
             .map((att) => {
               // Remove base64Data but keep all other properties including URL

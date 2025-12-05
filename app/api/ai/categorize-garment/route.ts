@@ -79,7 +79,6 @@ export async function POST(request: NextRequest) {
       model: actualModel,
       temperature: 0.1,
       maxOutputTokens: 1024,
-      timeout: 30000, // 30 second timeout to prevent hanging
       safetySettings: [],
     });
 
