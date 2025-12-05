@@ -221,9 +221,9 @@ function ResultadoContent() {
           .from('generation_customizations') as any)
           .select('*')
           .eq('upload_id', uploadIds[0])
-          .single();
+          .maybeSingle();
 
-        if (error && error.code !== 'PGRST116') throw error;
+        if (error) throw error;
 
         if (data) {
           setCustomization({
@@ -752,9 +752,9 @@ function ResultadoContent() {
           .select('dislike_count')
           .eq('user_id', user.id)
           .eq('date', today)
-          .single();
+          .maybeSingle();
 
-        if (error && error.code !== 'PGRST116') {
+        if (error) {
           console.error('Error loading daily dislike count:', error);
           return;
         }
