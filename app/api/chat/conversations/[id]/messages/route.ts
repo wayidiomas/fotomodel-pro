@@ -237,7 +237,7 @@ function extractAttachmentData(att: any) {
 }
 
 type AttachmentPayload = {
-  type: 'garment' | 'background' | 'improve_reference';
+  type: 'garment' | 'background' | 'improve_reference' | 'model';
   url?: string;
   base64Data?: string;
   mimeType?: string;
@@ -596,16 +596,22 @@ export async function POST(
     const garmentSources = getLatestUniqueAttachments(combinedAttachments, 'garment', 3);
     const backgroundSources = getLatestUniqueAttachments(combinedAttachments, 'background', 1);
     const improveReferenceSources = getLatestUniqueAttachments(combinedAttachments, 'improve_reference', 1);
+    const modelSources = getLatestUniqueAttachments(combinedAttachments, 'model', 1);
     const latestBackgroundAttachment = backgroundSources[0];
     let latestImproveReference = improveReferenceSources[0];
+    const latestModelAttachment = modelSources[0];
     const totalGarments = garmentSources.length;
     const hasGarment = totalGarments > 0;
     const hasBackground = Boolean(latestBackgroundAttachment);
+    const hasModel = Boolean(latestModelAttachment);
 
     // Debug logging for attachment processing
     console.log(`[Chat] Attachments in request body: ${JSON.stringify(attachments?.map((a: any) => ({ type: a.type, hasUrl: !!a.url, hasBase64: !!a.base64Data })) || [])}`);
     console.log(`[Chat] Combined attachments count: ${combinedAttachments.length}`);
-    console.log(`[Chat] Garment sources: ${garmentSources.length}, Background: ${hasBackground}, Improve reference found: ${!!latestImproveReference}`);
+    console.log(`[Chat] Garment sources: ${garmentSources.length}, Background: ${hasBackground}, Model: ${hasModel}, Improve reference found: ${!!latestImproveReference}`);
+    if (latestModelAttachment) {
+      console.log(`[Chat] Model attachment details: url=${latestModelAttachment.url?.substring(0, 80)}..., hasBase64=${!!latestModelAttachment.base64Data}`);
+    }
     if (latestImproveReference) {
       console.log(`[Chat] Improve reference details: url=${latestImproveReference.url?.substring(0, 80)}..., hasBase64=${!!latestImproveReference.base64Data}`);
     }
@@ -693,9 +699,9 @@ export async function POST(
       })),
     });
 
-    // If decision agent says not ready but we have garment or improve reference, force generation
+    // If decision agent says not ready but we have garment, model, or improve reference, force generation
     // Use detected gender or default to FEMALE
-    if (!decision.ready && (hasGarment || hasImproveReference)) {
+    if (!decision.ready && (hasGarment || hasImproveReference || hasModel)) {
       const fallbackPrompt = buildSimplePrompt({
         userDescription: effectiveContent,
         garmentCount: Math.max(1, totalGarments || 1),
@@ -716,7 +722,7 @@ export async function POST(
         backgroundId: decision.backgroundId,
       };
 
-      console.log(`[Chat] Forcing generation with gender: ${gender} (detected: ${detectedGender || 'none'}), improve: ${hasImproveReference}`);
+      console.log(`[Chat] Forcing generation with gender: ${gender} (detected: ${detectedGender || 'none'}), improve: ${hasImproveReference}, model: ${hasModel}`);
     }
 
     // If NOT ready to generate, respond with questions (free)
@@ -795,6 +801,67 @@ export async function POST(
     const referenceImages: Array<{ data: string; mimeType: string }> = [];
     const referenceDescriptions: string[] = [];
     let referenceIndex = 1;
+
+    // Process model attachment FIRST (if no improve_reference exists)
+    // Model defines the pose/identity for virtual try-on
+    if (!latestImproveReference && latestModelAttachment) {
+      console.log(`[Chat] Processing model attachment as POSE REFERENCE`);
+      let modelImageData = extractAttachmentData(latestModelAttachment);
+
+      // If no base64Data, try to fetch from URL
+      if (!modelImageData.base64Data) {
+        const url = latestModelAttachment.url || (latestModelAttachment.metadata as any)?.imageUrl;
+        if (url) {
+          console.log(`[Chat] Fetching model image from URL: ${url.substring(0, 100)}...`);
+          const fetched = await fetchImageAsBase64(url);
+          if (fetched) {
+            modelImageData = fetched;
+            console.log(`[Chat] Successfully fetched model image (${modelImageData.mimeType})`);
+          } else {
+            console.error(`[Chat] FAILED to fetch model image from URL: ${url.substring(0, 100)}`);
+          }
+        } else {
+          console.error(`[Chat] No URL found for model attachment`);
+        }
+      } else {
+        console.log(`[Chat] Model attachment already has base64Data`);
+      }
+
+      if (modelImageData.base64Data) {
+        referenceImages.push({
+          data: modelImageData.base64Data,
+          mimeType: modelImageData.mimeType,
+        });
+
+        const poseRefDescription = `Reference image ${referenceIndex} (POSE & IDENTITY REFERENCE): CRITICAL - This is the MODEL's pose and identity reference. You MUST preserve the exact pose, body proportions, camera angle, facial features, and lighting style from this image. The model's IDENTITY and POSE must be preserved exactly. Dress this model with garments from the following reference images.`;
+
+        referenceDescriptions.push(poseRefDescription);
+        referenceIndex += 1;
+        console.log(`[Chat] Added model as reference image ${referenceIndex - 1} (POSE REFERENCE)`);
+      } else {
+        // CRITICAL: Failed to load model image
+        console.error(`[Chat] CRITICAL: Failed to load model image - no base64Data available`);
+
+        const { data: errorMessage } = await (supabase
+          .from('chat_messages') as any)
+          .insert({
+            conversation_id: conversationId,
+            role: 'assistant',
+            content: 'Não foi possível carregar a imagem da modelo selecionada. Por favor, tente novamente ou selecione outra modelo.',
+            credits_charged: 0,
+            metadata: { error: 'model_load_failed' },
+          })
+          .select('id, content, created_at')
+          .single();
+
+        return NextResponse.json({
+          success: false,
+          error: 'Falha ao carregar imagem da modelo',
+          message: errorMessage,
+          retryable: true,
+        });
+      }
+    }
 
     // Process improve reference FIRST (highest priority)
     // This is CRITICAL for GARMENT_SWAP mode - the pose reference must be loaded
