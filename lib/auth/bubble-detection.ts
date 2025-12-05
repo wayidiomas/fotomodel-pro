@@ -20,20 +20,19 @@ interface BubbleResponse {
 }
 
 /**
- * Checks if a user exists in Bubble's database by email
- * Note: Phone detection is not possible as Bubble doesn't store phone numbers
- * Only works for Google OAuth logins which provide email
+ * Checks if a user exists in Bubble's database
+ * Bubble stores users with "Email txt" in format: {phone}@fotomodel.com
+ * Example: +5521980390959 → 5521980390959@fotomodel.com
  *
- * @param email - User's email address
+ * @param phoneOrEmail - Phone number (E.164 format) or email address
  * @returns Promise<{ exists: boolean; bubbleUserId?: string; bubbleData?: BubbleUser }>
  */
 export async function checkBubbleUserExists(
-  email: string | null
+  phoneOrEmail: string | null
 ): Promise<{ exists: boolean; bubbleUserId?: string; bubbleData?: BubbleUser }> {
   try {
-    // If no email provided (e.g., WhatsApp login), skip Bubble detection
-    if (!email || email.endsWith('@phone.fotomodel.app')) {
-      console.log('[Bubble] No real email available - skipping Bubble detection');
+    if (!phoneOrEmail) {
+      console.log('[Bubble] No phone or email provided - skipping Bubble detection');
       return { exists: false };
     }
 
@@ -45,11 +44,29 @@ export async function checkBubbleUserExists(
       return { exists: false };
     }
 
-    console.log('[Bubble] Checking for user with email:', email);
+    // Construct Bubble email from phone or use email directly
+    let bubbleEmail: string;
+
+    if (phoneOrEmail.startsWith('+')) {
+      // Phone number - construct Bubble email format
+      const cleanPhone = phoneOrEmail.replace(/\+/g, '');
+      bubbleEmail = `${cleanPhone}@fotomodel.com`;
+      console.log('[Bubble] Constructed email from phone:', bubbleEmail);
+    } else if (phoneOrEmail.includes('@')) {
+      // Already an email
+      bubbleEmail = phoneOrEmail;
+      console.log('[Bubble] Using provided email:', bubbleEmail);
+    } else {
+      // Plain phone number without +
+      bubbleEmail = `${phoneOrEmail}@fotomodel.com`;
+      console.log('[Bubble] Constructed email from clean phone:', bubbleEmail);
+    }
+
+    console.log('[Bubble] Checking for user with email:', bubbleEmail);
 
     // Query Bubble API for user with matching email (using "Email txt" field)
     const constraints = JSON.stringify([
-      { key: 'Email txt', constraint_type: 'equals', value: email }
+      { key: 'Email txt', constraint_type: 'equals', value: bubbleEmail }
     ]);
 
     const url = `${bubbleApiUrl}/obj/user?constraints=${encodeURIComponent(constraints)}&limit=1`;
@@ -73,7 +90,12 @@ export async function checkBubbleUserExists(
 
     if (data.results && data.results.length > 0) {
       const bubbleUser = data.results[0];
-      console.log('[Bubble] User found:', bubbleUser._id, bubbleUser['Email txt']);
+      console.log('[Bubble] ✅ User found in Bubble!', {
+        bubbleId: bubbleUser._id,
+        email: bubbleUser['Email txt'],
+        credits: bubbleUser['Créditos'],
+        name: bubbleUser['Nome']
+      });
       return {
         exists: true,
         bubbleUserId: bubbleUser._id,
@@ -81,7 +103,7 @@ export async function checkBubbleUserExists(
       };
     }
 
-    console.log('[Bubble] No user found with email:', email);
+    console.log('[Bubble] ❌ No user found with email:', bubbleEmail);
     return { exists: false };
   } catch (error) {
     console.error('[Bubble] Error checking user existence:', error);

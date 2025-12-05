@@ -199,21 +199,23 @@ export async function POST(request: NextRequest) {
       isNewUser = true;
 
       // Check if user exists in Bubble and update the public.users record
-      // Note: For WhatsApp login, we don't have a real email, so Bubble detection will be skipped
-      // Bubble detection only works for Google OAuth users
-      console.log('[verify-otp] Checking Bubble user existence...');
-      const bubbleCheck = await checkBubbleUserExists(null); // WhatsApp login has no real email
+      // Bubble stores emails as {phone}@fotomodel.com
+      console.log('[verify-otp] Checking Bubble user existence for phone:', phone);
+      const bubbleCheck = await checkBubbleUserExists(phone);
       console.log('[verify-otp] Bubble check result:', bubbleCheck);
 
       // Update the public.users record (created by trigger) with Bubble info if applicable
       if (bubbleCheck.exists) {
-        console.log('[verify-otp] Updating user with Bubble migration data...');
+        console.log('[verify-otp] 🎉 Bubble user detected! Granting 50 bonus credits...');
+
+        // Give 50 bonus credits (10 initial + 40 bonus = 50 total)
         const { error: updateBubbleError } = await supabase
           .from('users')
           .update({
             migrated_from_bubble: true,
             bubble_user_id: bubbleCheck.bubbleUserId,
             bubble_welcome_shown: false, // Will show welcome popup on first dashboard visit
+            credits: 50, // 50 bonus credits for Bubble users
           })
           .eq('id', userId);
 
@@ -221,7 +223,12 @@ export async function POST(request: NextRequest) {
           console.error('[verify-otp] Error updating Bubble data:', updateBubbleError);
           // Don't fail the whole flow, just log the error
         } else {
-          console.log(`🎉 Bubble user detected: ${phone} - Will receive 50 bonus credits on first dashboard visit`);
+          console.log(`✅ Bubble user setup complete:`, {
+            userId,
+            phone,
+            bubbleId: bubbleCheck.bubbleUserId,
+            credits: 50
+          });
         }
       }
     } else {
