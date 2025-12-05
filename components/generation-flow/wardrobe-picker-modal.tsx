@@ -34,7 +34,7 @@ export const WardrobePickerModal: React.FC<WardrobePickerModalProps> = ({
   const [searchTerm, setSearchTerm] = React.useState('');
   const [activeCollection, setActiveCollection] = React.useState<string>('all');
   const [currentPage, setCurrentPage] = React.useState(1);
-  const ITEMS_PER_PAGE = 6;
+  const ITEMS_PER_PAGE = 18;
 
   React.useEffect(() => {
     if (!open) {
@@ -94,8 +94,8 @@ export const WardrobePickerModal: React.FC<WardrobePickerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4 py-6">
-      <div className="w-full max-w-[1100px] rounded-[40px] border border-white/30 bg-white/85 p-6 shadow-[0_25px_80px_rgba(15,15,35,0.25)] backdrop-blur-2xl">
-        <div className="flex flex-col gap-6">
+      <div className="w-full max-w-[1100px] max-h-[90vh] flex flex-col rounded-[40px] border border-white/30 bg-white/85 shadow-[0_25px_80px_rgba(15,15,35,0.25)] backdrop-blur-2xl">
+        <div className="flex flex-col gap-6 p-6 overflow-y-auto">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="space-y-1">
               <div className="inline-flex items-center gap-2 rounded-full border border-[#f1e7d3] bg-[#f7f2e7] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-[#4b3f2f]">
