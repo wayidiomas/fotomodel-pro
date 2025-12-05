@@ -40,12 +40,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const [isFocused, setIsFocused] = React.useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
-  // Debug logs
-  React.useEffect(() => {
-    console.log('[MessageInput] 🔍 Draft from parent:', draft);
-    console.log('[MessageInput] 📎 Attachments in local state:', attachments);
-  }, [draft, attachments]);
-
   // Modal states
   const [showModelSelector, setShowModelSelector] = React.useState(false);
   const [showWardrobeSelector, setShowWardrobeSelector] = React.useState(false);
@@ -99,13 +93,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     const draftMessage = draft.message || '';
     const draftAttachments = draft.attachments || [];
 
-    console.log('[MessageInput] 🔄 Sync effect triggered', {
-      draftMessage,
-      draftAttachmentsCount: draftAttachments.length,
-      draftAttachments,
-      localAttachmentsCount: attachments.length,
-    });
-
     const parentDraftSerialized = JSON.stringify({
       conversationId,
       message: draftMessage,
@@ -114,7 +101,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({
 
     // If this is the same draft we already processed, skip
     if (parentDraftSerialized === lastParentDraftRef.current) {
-      console.log('[MessageInput] ⏭️ Skipping - same draft');
       return;
     }
 
@@ -122,14 +108,12 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     // UNLESS there are new attachments in the parent draft that we don't have locally
     const hasNewAttachments = draftAttachments.length > 0 && attachments.length === 0;
     if (isInternalUpdateRef.current && !hasNewAttachments) {
-      console.log('[MessageInput] ⏭️ Skipping - internal update');
       lastParentDraftRef.current = parentDraftSerialized;
       isInternalUpdateRef.current = false;
       return;
     }
 
     // External change from parent - update local state
-    console.log('[MessageInput] ✅ Applying external draft change', { hasNewAttachments });
     lastParentDraftRef.current = parentDraftSerialized;
     setMessage(draftMessage);
     setAttachments(draftAttachments);
@@ -161,12 +145,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       return;
     }
     lastNotifiedRef.current = serialized;
-
-    console.log('[MessageInput] 📤 Notifying parent of draft change', {
-      message,
-      attachmentsCount: attachments.length,
-      attachments,
-    });
 
     // Mark as internal update so the sync effect doesn't re-apply these changes
     isInternalUpdateRef.current = true;

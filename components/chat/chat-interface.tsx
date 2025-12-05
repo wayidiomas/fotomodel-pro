@@ -115,23 +115,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
-      console.log('[ChatInterface] 🔍 Loading drafts from localStorage...');
       const stored = window.localStorage.getItem(DRAFT_STORAGE_KEY);
-      console.log('[ChatInterface] 📦 Raw stored data:', stored);
 
       if (stored) {
         const parsed = JSON.parse(stored);
-        console.log('[ChatInterface] 📋 Parsed drafts:', parsed);
-        console.log('[ChatInterface] 📊 Draft keys:', Object.keys(parsed));
-
         const draftsToLoad = Array.isArray(parsed) ? {} : parsed || {};
         setDrafts(draftsToLoad);
-        console.log('[ChatInterface] ✅ Drafts loaded:', draftsToLoad);
-      } else {
-        console.log('[ChatInterface] ℹ️ No drafts found in localStorage');
       }
     } catch (error) {
-      console.error('[ChatInterface] ❌ Erro ao carregar rascunhos do chat:', error);
+      console.error('Erro ao carregar rascunhos do chat:', error);
     }
   }, []);
 
@@ -169,29 +161,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const updateDraft = React.useCallback(
     (key: string, draft: DraftState) => {
-      console.log('[ChatInterface] 📝 updateDraft called', {
-        key,
-        message: draft.message,
-        attachmentsCount: draft.attachments?.length || 0,
-        attachments: draft.attachments,
-      });
-
       setDrafts((prev) => {
         const cleanDraft: DraftState = {
           message: draft.message || '',
           attachments: (draft.attachments || []).map((att) => ({ ...att })),
         };
 
-        console.log('[ChatInterface] 🧹 Clean draft', {
-          key,
-          cleanDraft,
-        });
-
         const isEmpty = !cleanDraft.message && cleanDraft.attachments.length === 0;
         const previousDraft = prev[key];
 
         if (isEmpty) {
-          console.log('[ChatInterface] 🗑️ Draft is empty, deleting', key);
           if (!previousDraft) {
             return prev;
           }
@@ -202,11 +181,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }
 
         if (draftsAreEqual(previousDraft, cleanDraft)) {
-          console.log('[ChatInterface] ⏭️ Draft unchanged, skipping');
           return prev;
         }
 
-        console.log('[ChatInterface] ✅ Persisting draft', { key, cleanDraft });
         const next = { ...prev, [key]: cleanDraft };
         persistDrafts(next);
         return next;
