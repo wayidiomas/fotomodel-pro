@@ -103,6 +103,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       draftMessage,
       draftAttachmentsCount: draftAttachments.length,
       draftAttachments,
+      localAttachmentsCount: attachments.length,
     });
 
     const parentDraftSerialized = JSON.stringify({
@@ -118,7 +119,9 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     }
 
     // If this update was triggered by our own onDraftChange, skip
-    if (isInternalUpdateRef.current) {
+    // UNLESS there are new attachments in the parent draft that we don't have locally
+    const hasNewAttachments = draftAttachments.length > 0 && attachments.length === 0;
+    if (isInternalUpdateRef.current && !hasNewAttachments) {
       console.log('[MessageInput] ⏭️ Skipping - internal update');
       lastParentDraftRef.current = parentDraftSerialized;
       isInternalUpdateRef.current = false;
@@ -126,11 +129,12 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     }
 
     // External change from parent - update local state
-    console.log('[MessageInput] ✅ Applying external draft change');
+    console.log('[MessageInput] ✅ Applying external draft change', { hasNewAttachments });
     lastParentDraftRef.current = parentDraftSerialized;
     setMessage(draftMessage);
     setAttachments(draftAttachments);
-  }, [draft, conversationId]);
+    isInternalUpdateRef.current = false; // Reset flag after applying external change
+  }, [draft, conversationId, attachments]);
 
   // Auto-resize textarea
   React.useEffect(() => {
@@ -157,6 +161,12 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       return;
     }
     lastNotifiedRef.current = serialized;
+
+    console.log('[MessageInput] 📤 Notifying parent of draft change', {
+      message,
+      attachmentsCount: attachments.length,
+      attachments,
+    });
 
     // Mark as internal update so the sync effect doesn't re-apply these changes
     isInternalUpdateRef.current = true;
