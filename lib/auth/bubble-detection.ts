@@ -20,40 +20,52 @@ interface BubbleResponse {
 }
 
 /**
- * Checks if a phone number exists in Bubble's database
- * @param phone - Phone number in E.164 format (e.g., +5511999999999)
+ * Checks if a user exists in Bubble's database by email
+ * Note: Phone detection is not possible as Bubble doesn't store phone numbers
+ * Only works for Google OAuth logins which provide email
+ *
+ * @param email - User's email address
  * @returns Promise<{ exists: boolean; bubbleUserId?: string; bubbleData?: BubbleUser }>
  */
 export async function checkBubbleUserExists(
-  phone: string
+  email: string | null
 ): Promise<{ exists: boolean; bubbleUserId?: string; bubbleData?: BubbleUser }> {
   try {
+    // If no email provided (e.g., WhatsApp login), skip Bubble detection
+    if (!email || email.endsWith('@phone.fotomodel.app')) {
+      console.log('[Bubble] No real email available - skipping Bubble detection');
+      return { exists: false };
+    }
+
     const bubbleApiUrl = process.env.BUBBLE_API_URL;
     const bubbleApiToken = process.env.BUBBLE_API_TOKEN;
 
     if (!bubbleApiUrl || !bubbleApiToken) {
-      console.warn('Bubble API credentials not configured - skipping Bubble user detection');
+      console.warn('[Bubble] API credentials not configured - skipping Bubble user detection');
       return { exists: false };
     }
 
-    // Remove '+' and format for Bubble comparison
-    // Bubble stores phones without '+' prefix
-    const cleanPhone = phone.replace(/\+/g, '');
+    console.log('[Bubble] Checking for user with email:', email);
 
-    // Query Bubble API for user with matching phone
-    const response = await fetch(
-      `${bubbleApiUrl}/obj/user?constraints=[{"key":"Telefone","constraint_type":"equals","value":"${cleanPhone}"}]&limit=1`,
-      {
-        method: 'GET',
-        headers: {
-          'api_key_fotomodel': `Bearer ${bubbleApiToken}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    // Query Bubble API for user with matching email (using "Email txt" field)
+    const constraints = JSON.stringify([
+      { key: 'Email txt', constraint_type: 'equals', value: email }
+    ]);
+
+    const url = `${bubbleApiUrl}/obj/user?constraints=${encodeURIComponent(constraints)}&limit=1`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'api_key_fotomodel': `Bearer ${bubbleApiToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
 
     if (!response.ok) {
-      console.error('Bubble API error:', response.status, response.statusText);
+      console.error('[Bubble] API error:', response.status, response.statusText);
+      const errorText = await response.text();
+      console.error('[Bubble] Error details:', errorText);
       return { exists: false };
     }
 
@@ -61,6 +73,7 @@ export async function checkBubbleUserExists(
 
     if (data.results && data.results.length > 0) {
       const bubbleUser = data.results[0];
+      console.log('[Bubble] User found:', bubbleUser._id, bubbleUser['Email txt']);
       return {
         exists: true,
         bubbleUserId: bubbleUser._id,
@@ -68,9 +81,10 @@ export async function checkBubbleUserExists(
       };
     }
 
+    console.log('[Bubble] No user found with email:', email);
     return { exists: false };
   } catch (error) {
-    console.error('Error checking Bubble user existence:', error);
+    console.error('[Bubble] Error checking user existence:', error);
     // Don't fail the authentication if Bubble check fails
     return { exists: false };
   }

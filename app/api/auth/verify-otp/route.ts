@@ -199,8 +199,10 @@ export async function POST(request: NextRequest) {
       isNewUser = true;
 
       // Check if user exists in Bubble and update the public.users record
+      // Note: For WhatsApp login, we don't have a real email, so Bubble detection will be skipped
+      // Bubble detection only works for Google OAuth users
       console.log('[verify-otp] Checking Bubble user existence...');
-      const bubbleCheck = await checkBubbleUserExists(phone);
+      const bubbleCheck = await checkBubbleUserExists(null); // WhatsApp login has no real email
       console.log('[verify-otp] Bubble check result:', bubbleCheck);
 
       // Update the public.users record (created by trigger) with Bubble info if applicable
