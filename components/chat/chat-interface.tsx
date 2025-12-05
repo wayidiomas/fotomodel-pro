@@ -169,16 +169,29 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const updateDraft = React.useCallback(
     (key: string, draft: DraftState) => {
+      console.log('[ChatInterface] 📝 updateDraft called', {
+        key,
+        message: draft.message,
+        attachmentsCount: draft.attachments?.length || 0,
+        attachments: draft.attachments,
+      });
+
       setDrafts((prev) => {
         const cleanDraft: DraftState = {
           message: draft.message || '',
           attachments: (draft.attachments || []).map((att) => ({ ...att })),
         };
 
+        console.log('[ChatInterface] 🧹 Clean draft', {
+          key,
+          cleanDraft,
+        });
+
         const isEmpty = !cleanDraft.message && cleanDraft.attachments.length === 0;
         const previousDraft = prev[key];
 
         if (isEmpty) {
+          console.log('[ChatInterface] 🗑️ Draft is empty, deleting', key);
           if (!previousDraft) {
             return prev;
           }
@@ -189,9 +202,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }
 
         if (draftsAreEqual(previousDraft, cleanDraft)) {
+          console.log('[ChatInterface] ⏭️ Draft unchanged, skipping');
           return prev;
         }
 
+        console.log('[ChatInterface] ✅ Persisting draft', { key, cleanDraft });
         const next = { ...prev, [key]: cleanDraft };
         persistDrafts(next);
         return next;
