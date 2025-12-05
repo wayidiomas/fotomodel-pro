@@ -57,12 +57,6 @@ export function BackgroundSelector({
     value?.type === 'custom' ? value.customUrl || null : null
   );
   const [uploadError, setUploadError] = React.useState<string | null>(null);
-  const [aiPrompt, setAiPrompt] = React.useState<string>(value?.type === 'ai' ? value.aiPrompt || '' : '');
-  const [aiPreview, setAiPreview] = React.useState<string | null>(
-    value?.type === 'ai' ? value.aiPreviewUrl || value.customUrl || null : null
-  );
-  const [aiError, setAiError] = React.useState<string | null>(null);
-  const [isGeneratingAI, setIsGeneratingAI] = React.useState(false);
   const [selectedCategory, setSelectedCategory] = React.useState<string>('all');
 
   // Handle preset selection
@@ -71,9 +65,6 @@ export function BackgroundSelector({
       // Deselect
       onChange(null);
       setCustomPreview(null);
-      setAiPreview(null);
-      setAiPrompt('');
-      setAiError(null);
     } else {
       // Select preset
       onChange({
@@ -83,11 +74,8 @@ export function BackgroundSelector({
         presetCategory: preset.category,
       });
       setCustomPreview(null);
-      setAiPreview(null);
-      setAiPrompt('');
     }
     setUploadError(null);
-    setAiError(null);
   };
 
   // Handle custom file upload
@@ -109,14 +97,11 @@ export function BackgroundSelector({
     }
 
     setUploadError(null);
-    setAiError(null);
 
     const reader = new FileReader();
     reader.onloadend = () => {
       const previewUrl = typeof reader.result === 'string' ? reader.result : null;
       setCustomPreview(previewUrl);
-      setAiPreview(null);
-      setAiPrompt('');
 
       onChange({
         type: 'custom',
@@ -133,16 +118,8 @@ export function BackgroundSelector({
   React.useEffect(() => {
     if (value?.type === 'custom') {
       setCustomPreview(value.customUrl || null);
-      setAiPreview(null);
-      setAiPrompt('');
-    } else if (value?.type === 'ai') {
-      setAiPreview(value.aiPreviewUrl || value.customUrl || null);
-      setAiPrompt(value.aiPrompt || '');
-      setCustomPreview(null);
     } else if (!value) {
       setCustomPreview(null);
-      setAiPreview(null);
-      setAiPrompt('');
     }
   }, [value]);
 
@@ -338,162 +315,7 @@ export function BackgroundSelector({
         })}
       </div>
 
-      {/* AI Generator */}
-      <div className="mt-6 rounded-2xl border border-gray-200 bg-white/90 p-4 shadow-sm">
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold text-gray-900">Gerar com IA</p>
-                <span className="inline-flex items-center rounded-full bg-[#f4f0e7] px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#6d4b21]">
-                  1 crédito
-                </span>
-              </div>
-              <p className="text-xs text-gray-500">
-                Descreva o cenário e deixe a IA criar o fundo perfeito (sem modelos ou pessoas)
-              </p>
-            </div>
-            {value?.type === 'ai' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setAiPreview(null);
-                  setAiPrompt('');
-                  setAiError(null);
-                  onChange(null);
-                }}
-                className="text-xs text-gray-500 underline hover:text-gray-700 transition-colors"
-              >
-                Limpar seleção IA
-              </button>
-            )}
-          </div>
-
-          <textarea
-            value={aiPrompt}
-            onChange={(e) => setAiPrompt(e.target.value)}
-            rows={3}
-            className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-[#20202a] focus:ring-[#20202a]"
-            placeholder="Ex: estúdio em tons pastel com luz lateral suave e elementos florais desfocados"
-          />
-
-          {aiError && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
-              {aiError}
-            </div>
-          )}
-
-          <div className="flex flex-col gap-2 pt-1 md:flex-row md:items-center md:justify-between">
-            <p className="text-xs text-gray-500">
-              A IA gera apenas o ambiente. Sua modelo continuará perfeita e será posicionada nesse cenário. Cada geração consome 1 crédito.
-            </p>
-            <button
-              type="button"
-              disabled={isGeneratingAI}
-              onClick={async () => {
-                const prompt = aiPrompt.trim();
-                if (!prompt) {
-                  setAiError('Descreva o background para gerar com IA.');
-                  return;
-                }
-
-                try {
-                  setAiError(null);
-                  setIsGeneratingAI(true);
-                  const response = await fetch('/api/ai/generate-background', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt }),
-                  });
-                  const data = await response.json();
-                  if (!response.ok || !data.success || !data.imageData) {
-                    throw new Error(data.error || 'Não foi possível gerar o background.');
-                  }
-
-                  const previewUrl = `data:${data.mimeType || 'image/png'};base64,${data.imageData}`;
-                  setAiPreview(previewUrl);
-                  setCustomPreview(null);
-                  onChange({
-                    type: 'ai',
-                    aiPrompt: prompt,
-                    aiImageData: data.imageData,
-                    aiImageMimeType: data.mimeType || 'image/png',
-                    aiPreviewUrl: previewUrl,
-                    customUrl: previewUrl,
-                  });
-                } catch (error) {
-                  console.error('Erro ao gerar background com IA:', error);
-                  setAiError(
-                    error instanceof Error ? error.message : 'Erro inesperado ao gerar background.'
-                  );
-                } finally {
-                  setIsGeneratingAI(false);
-                }
-              }}
-              className={cn(
-                'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white transition-colors',
-                isGeneratingAI ? 'bg-gray-400' : 'bg-[#20202a] hover:bg-[#2c2c38]'
-              )}
-            >
-              {isGeneratingAI ? (
-                <>
-                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                  Gerando...
-                </>
-              ) : (
-                <>
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M8 1L10 5L14 6L11 9L12 13L8 11L4 13L5 9L2 6L6 5L8 1Z"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                  Gerar fundo
-                </>
-              )}
-            </button>
-          </div>
-
-          {aiPreview && (
-            <div className="mt-4 rounded-xl border border-gray-200 bg-white/70 p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-gray-800">Prévia do background</p>
-                {value?.type === 'ai' && (
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                    Selecionado
-                  </span>
-                )}
-              </div>
-              <div className="relative mt-2 h-48 w-full overflow-hidden rounded-lg border border-gray-100">
-                <Image src={aiPreview} alt="Background gerado pela IA" fill className="object-cover" />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      {/* AI generator removido do front-end */}
 
       {/* Selected background info */}
       {value && (

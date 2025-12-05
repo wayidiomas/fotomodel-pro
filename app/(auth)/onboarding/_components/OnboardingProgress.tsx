@@ -17,16 +17,22 @@ export function OnboardingProgress({ currentStep, totalSteps }: OnboardingProgre
                 return (
                     <div
                         key={index}
-                        className="relative h-1.5 w-12 overflow-hidden rounded-full bg-black/10"
+                        className="relative h-2 w-14 overflow-hidden rounded-full bg-black/10"
                     >
                         <motion.div
                             initial={false}
                             animate={{
                                 width: isActive ? '100%' : isCompleted ? '100%' : '0%',
-                                backgroundColor: isActive || isCompleted ? '#000000' : 'transparent',
+                                backgroundColor: isActive || isCompleted ? '#111827' : 'transparent',
                             }}
                             transition={{ duration: 0.5, ease: 'easeInOut' }}
-                            className="absolute inset-y-0 left-0 h-full rounded-full"
+                            className="absolute inset-y-0 left-0 h-full rounded-full shadow-[0_6px_18px_rgba(0,0,0,0.18)]"
+                            style={{
+                                backgroundImage:
+                                    isActive || isCompleted
+                                        ? 'linear-gradient(90deg, #111827 0%, #0F172A 55%, #0B1224 100%)'
+                                        : undefined,
+                            }}
                         />
                     </div>
                 );

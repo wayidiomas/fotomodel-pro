@@ -3,8 +3,8 @@
 import * as React from 'react';
 import Image from 'next/image';
 import type { ImageFormatPreset } from '@/lib/generation-flow/image-formats';
-import { DEFAULT_EXPRESSIONS, type FacialExpression } from './facial-expression-picker';
-import { DEFAULT_HAIR_COLORS, type HairColorOption } from './hair-color-picker';
+import { DEFAULT_EXPRESSIONS_FEMALE, DEFAULT_EXPRESSIONS_MALE, type FacialExpression } from './facial-expression-picker';
+import { DEFAULT_HAIR_COLORS_FEMALE, DEFAULT_HAIR_COLORS_MALE, type HairColorOption } from './hair-color-picker';
 
 interface CustomizationThumbnailsProps {
   selectedFormat?: ImageFormatPreset | null;
@@ -13,11 +13,13 @@ interface CustomizationThumbnailsProps {
   height?: number;
   weight?: number;
   hasAITools?: boolean;
+  gender?: 'MALE' | 'FEMALE' | null;
 }
 
 /**
  * Renders visual thumbnails for customizations (64x64px)
  * Matches the glassmorphism design of pose/garment thumbnails
+ * Switches between male/female images based on gender prop
  */
 export function CustomizationThumbnails({
   selectedFormat,
@@ -26,8 +28,13 @@ export function CustomizationThumbnails({
   height,
   weight,
   hasAITools,
+  gender = 'FEMALE',
 }: CustomizationThumbnailsProps) {
   const thumbnails: React.ReactNode[] = [];
+
+  // Use gender-specific arrays
+  const expressions = gender === 'MALE' ? DEFAULT_EXPRESSIONS_MALE : DEFAULT_EXPRESSIONS_FEMALE;
+  const hairColors = gender === 'MALE' ? DEFAULT_HAIR_COLORS_MALE : DEFAULT_HAIR_COLORS_FEMALE;
 
   // 1. Format Thumbnail
   if (selectedFormat) {
@@ -38,7 +45,7 @@ export function CustomizationThumbnails({
 
   // 2. Expression Thumbnail
   if (facialExpression) {
-    const expression = DEFAULT_EXPRESSIONS.find(e => e.value === facialExpression);
+    const expression = expressions.find(e => e.value === facialExpression);
     if (expression) {
       thumbnails.push(
         <ExpressionThumbnail key="expression" expression={expression} />
@@ -48,7 +55,7 @@ export function CustomizationThumbnails({
 
   // 3. Hair Color Thumbnail
   if (hairColor) {
-    const color = DEFAULT_HAIR_COLORS.find(c => c.value === hairColor);
+    const color = hairColors.find(c => c.value === hairColor);
     if (color) {
       thumbnails.push(
         <HairColorThumbnail key="hair" color={color} />

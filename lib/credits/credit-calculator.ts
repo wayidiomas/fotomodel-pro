@@ -7,7 +7,7 @@ import type { AIToolsSelection } from '@/components/generation-flow/ai-tools-pan
 export interface CreditPricing {
   BASE_GENERATION: number;
   AI_EDIT: number;
-  WATERMARK_REMOVAL: number;
+  BACKGROUND_CHANGE: number;
   CHAT_GENERATION: number;
   CHAT_REFINEMENT: number;
   CHAT_CONVERSATION: number;
@@ -16,7 +16,7 @@ export interface CreditPricing {
 export const CREDIT_COSTS: CreditPricing = {
   BASE_GENERATION: 2, // Base cost for generating model + garment (guided flow)
   AI_EDIT: 1, // Cost per AI editing tool
-  WATERMARK_REMOVAL: 3, // Cost to download without watermark
+  BACKGROUND_CHANGE: 1, // Cost for applying background change
   CHAT_GENERATION: 2, // Base cost for chat generation (first image)
   CHAT_REFINEMENT: 1, // Cost for refining/editing chat generated image
   CHAT_CONVERSATION: 0, // Free conversational messages (no generation)
@@ -28,7 +28,7 @@ export function resolveCreditPricing(
   return {
     BASE_GENERATION: overrides.BASE_GENERATION ?? CREDIT_COSTS.BASE_GENERATION,
     AI_EDIT: overrides.AI_EDIT ?? CREDIT_COSTS.AI_EDIT,
-    WATERMARK_REMOVAL: overrides.WATERMARK_REMOVAL ?? CREDIT_COSTS.WATERMARK_REMOVAL,
+    BACKGROUND_CHANGE: overrides.BACKGROUND_CHANGE ?? CREDIT_COSTS.BACKGROUND_CHANGE,
     CHAT_GENERATION: overrides.CHAT_GENERATION ?? CREDIT_COSTS.CHAT_GENERATION,
     CHAT_REFINEMENT: overrides.CHAT_REFINEMENT ?? CREDIT_COSTS.CHAT_REFINEMENT,
     CHAT_CONVERSATION: overrides.CHAT_CONVERSATION ?? CREDIT_COSTS.CHAT_CONVERSATION,

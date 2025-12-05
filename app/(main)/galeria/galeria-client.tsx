@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
@@ -11,125 +10,104 @@ import {
   X,
   Calendar,
   Coins,
-  Grid3x3,
+  Loader2,
 } from 'lucide-react';
-import type { GenerationWithCategories } from '@/lib/gallery/extract-categories';
-import { filterGenerationsByCategory, countGenerationsByCategory } from '@/lib/gallery/extract-categories';
-import { cn } from '@/lib/utils';
-import { GarmentCategory } from '@/lib/generation-flow/garment-metadata-types';
 import { MainHeader } from '@/components/shared/main-header';
+import { getStoragePublicUrl } from '@/lib/storage/upload';
+import { useToast, ToastContainer } from '@/components/ui/toast';
 
-interface GaleriaClientProps {
-  generations: GenerationWithCategories[];
-  userCredits: number;
+interface GenerationResult {
+  id: string;
+  image_url: string;
+  thumbnail_url: string | null;
+  is_purchased: boolean;
+  created_at: string;
 }
 
-const SUPABASE_IMAGES_BUCKET =
-  process.env.NEXT_PUBLIC_SUPABASE_URL
-    ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/generated-images`
-    : null;
+interface Generation {
+  id: string;
+  created_at: string;
+  credits_used: number;
+  generation_results: GenerationResult[];
+}
+
+interface PaginationInfo {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
+interface GaleriaClientProps {
+  initialGenerations: Generation[];
+  userCredits: number;
+  stats: {
+    totalGenerations: number;
+    totalResults: number;
+    totalCreditsUsed: number;
+  };
+  pagination: PaginationInfo;
+}
 
 const PLACEHOLDER_IMAGE = '/assets/images/generation-flow/clothing-items.png';
 
+// Tiny blur placeholder for faster perceived loading
+const BLUR_DATA_URL = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAIAAoDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAAAAUH/8QAIhAAAgEDAwUBAAAAAAAAAAAAAQIDAAQREiExBRMiQWFR/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAZEQEBAAMBAAAAAAAAAAAAAAABAgADESH/2gAMAwEAAhEDEEA/ANS6Vcx3VxNLAweGSTuAYyGBIGx2qvSlJMY5WKvA3/9k=';
+
+// Use centralized storage URL resolution that detects correct bucket from path
 const resolvePublicImageUrl = (path?: string | null) => {
   if (!path) return '';
-  if (path.startsWith('http')) return path;
-
-  const bucketBase = SUPABASE_IMAGES_BUCKET;
-  if (!bucketBase) return '';
-
-  return `${bucketBase}/${path.replace(/^\/+/, '')}`;
+  return getStoragePublicUrl(path) || '';
 };
 
-// Garment category groups for filtering (same as vestuário)
-const CATEGORY_FILTERS = [
-  {
-    slug: 'tops',
-    label: 'Camisetas & Tops',
-    categories: ['TSHIRT', 'TANK_TOP', 'POLO', 'HENLEY', 'LONG_SLEEVE', 'BLOUSE', 'DRESS_SHIRT', 'BUTTON_DOWN']
-  },
-  {
-    slug: 'sweaters',
-    label: 'Moletons & Suéteres',
-    categories: ['SWEATER', 'CARDIGAN', 'PULLOVER', 'TURTLENECK', 'HOODIE', 'SWEATSHIRT']
-  },
-  {
-    slug: 'jackets',
-    label: 'Casacos & Jaquetas',
-    categories: ['BLAZER', 'SUIT_JACKET', 'BOMBER_JACKET', 'DENIM_JACKET', 'LEATHER_JACKET', 'TRENCH_COAT', 'PARKA', 'PEACOAT', 'PUFFER_JACKET', 'WINDBREAKER', 'VEST', 'TRACK_JACKET']
-  },
-  {
-    slug: 'pants',
-    label: 'Calças',
-    categories: ['JEANS', 'DRESS_PANTS', 'CHINOS', 'CARGO_PANTS', 'JOGGERS', 'SWEATPANTS', 'LEGGINGS']
-  },
-  {
-    slug: 'shorts',
-    label: 'Shorts & Bermudas',
-    categories: ['SHORTS', 'BERMUDA', 'CARGO_SHORTS', 'ATHLETIC_SHORTS']
-  },
-  {
-    slug: 'skirts',
-    label: 'Saias',
-    categories: ['PENCIL_SKIRT', 'A_LINE_SKIRT', 'MIDI_SKIRT', 'MAXI_SKIRT', 'MINI_SKIRT', 'PLEATED_SKIRT']
-  },
-  {
-    slug: 'dresses',
-    label: 'Vestidos',
-    categories: ['CASUAL_DRESS', 'COCKTAIL_DRESS', 'EVENING_GOWN', 'MIDI_DRESS', 'MAXI_DRESS', 'SHIRT_DRESS', 'WRAP_DRESS', 'SUNDRESS']
-  },
-  {
-    slug: 'jumpsuits',
-    label: 'Macacões',
-    categories: ['JUMPSUIT', 'ROMPER', 'OVERALLS']
-  },
-] as const;
-
-export function GaleriaClient({ generations, userCredits }: GaleriaClientProps) {
-  const router = useRouter();
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+export function GaleriaClient({
+  initialGenerations,
+  userCredits,
+  stats,
+  pagination: initialPagination
+}: GaleriaClientProps) {
+  const [generations, setGenerations] = useState(initialGenerations);
+  const [pagination, setPagination] = useState(initialPagination);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [selectedResult, setSelectedResult] = useState<{
-    generation: GenerationWithCategories;
-    result: any;
+    generation: Generation;
+    result: GenerationResult;
   } | null>(null);
   const [downloadingResultId, setDownloadingResultId] = useState<string | null>(null);
+  const { toasts, addToast, removeToast } = useToast();
 
-  // Calculate stats
-  const totalGenerations = generations.length;
-  const totalResults = generations.reduce(
-    (sum, gen) => sum + gen.generation_results.length,
-    0
-  );
-  const totalCreditsUsed = generations.reduce(
-    (sum, gen) => sum + (gen.credits_used || 0),
-    0
-  );
-
-  // Category counts
-  const categoryCounts = useMemo(() => {
-    return countGenerationsByCategory(generations);
-  }, [generations]);
-
-  // Extended filters with "All"
-  const extendedFilters = [
-    { slug: null, label: 'Todas as categorias' },
-    ...CATEGORY_FILTERS,
-  ];
-
-  // Filtered generations
-  const filteredGenerations = useMemo(() => {
-    return filterGenerationsByCategory(generations, selectedCategory);
-  }, [generations, selectedCategory]);
+  const { totalGenerations, totalResults, totalCreditsUsed } = stats;
 
   // Flatten results for display
   const displayResults = useMemo(() => {
-    return filteredGenerations.flatMap((generation) =>
+    return generations.flatMap((generation) =>
       generation.generation_results.map((result) => ({
         generation,
         result,
       }))
     );
-  }, [filteredGenerations]);
+  }, [generations]);
+
+  // Load more - simple fetch without React Query
+  const loadMore = async () => {
+    if (isLoadingMore || !pagination.hasMore) return;
+
+    setIsLoadingMore(true);
+    try {
+      const nextPage = pagination.page + 1;
+      const response = await fetch(`/api/gallery?page=${nextPage}`);
+      if (!response.ok) throw new Error('Failed to fetch');
+
+      const data = await response.json();
+      setGenerations(prev => [...prev, ...data.generations]);
+      setPagination(data.pagination);
+    } catch (error) {
+      console.error('Error loading more:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   const handleDownload = async (resultId: string) => {
     try {
@@ -148,7 +126,6 @@ export function GaleriaClient({ generations, userCredits }: GaleriaClientProps) 
       }
 
       if (data.imageUrl) {
-        // Download the clean image
         const imageResponse = await fetch(data.imageUrl);
         const blob = await imageResponse.blob();
         const url = URL.createObjectURL(blob);
@@ -161,11 +138,19 @@ export function GaleriaClient({ generations, userCredits }: GaleriaClientProps) 
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
 
-        alert('Download concluído com sucesso!');
+        addToast({
+          type: 'success',
+          title: 'Download concluído!',
+          description: 'A imagem foi baixada com sucesso.',
+        });
       }
     } catch (error: any) {
       console.error('Error downloading image:', error);
-      alert(error.message || 'Erro ao baixar imagem. Tente novamente.');
+      addToast({
+        type: 'error',
+        title: 'Erro ao baixar',
+        description: error.message || 'Erro ao baixar imagem. Tente novamente.',
+      });
     } finally {
       setDownloadingResultId(null);
     }
@@ -185,7 +170,6 @@ export function GaleriaClient({ generations, userCredits }: GaleriaClientProps) 
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
-      {/* Header */}
       <MainHeader currentPage="galeria" credits={userCredits} />
 
       <div className="flex flex-col gap-8 px-10 py-8">
@@ -199,7 +183,7 @@ export function GaleriaClient({ generations, userCredits }: GaleriaClientProps) 
                 Suas criações
               </div>
               <div className="space-y-1">
-                <h1 className="font-inter text-3xl font-bold text-[#111827]">Galeria</h1>
+                <h1 className="font-freight font-medium text-3xl text-[#111827]">Galeria</h1>
                 <p className="font-inter text-base text-[#4b5563]">
                   Veja todas as imagens de modelos que você gerou com IA.
                 </p>
@@ -240,133 +224,98 @@ export function GaleriaClient({ generations, userCredits }: GaleriaClientProps) 
           </div>
         </section>
 
-        {/* Filters */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-inter text-xl font-semibold text-[#020817]">
-              Filtrar por categoria
-            </h2>
-            {selectedCategory && (
-              <button
-                onClick={() => setSelectedCategory(null)}
-                className="text-sm font-semibold text-[#20202a] underline-offset-4 hover:underline"
-              >
-                Limpar filtro
-              </button>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-3">
-            {extendedFilters.map((category) => {
-              const isSelected = selectedCategory === category.slug;
-              const count = category.slug
-                ? categoryCounts.get(category.slug) || 0
-                : totalGenerations;
-
-              return (
-                <button
-                  key={category.slug ?? 'all'}
-                  onClick={() => setSelectedCategory(category.slug)}
-                  className={cn(
-                    'flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-semibold transition-all',
-                    isSelected
-                      ? 'border-[#20202a] bg-[#20202a] text-white shadow-md'
-                      : 'border-gray-200 bg-white/80 text-[#374151] hover:border-[#20202a]/40'
-                  )}
-                >
-                  {category.label}
-                  <span
-                    className={cn(
-                      'rounded-full px-2 py-0.5 text-xs',
-                      isSelected ? 'bg-white/10 text-white' : 'bg-gray-100 text-gray-600'
-                    )}
-                  >
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
         {/* Gallery Grid */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="font-inter text-xl font-semibold text-[#020817]">
+              <h2 className="font-freight font-medium text-xl text-[#020817]">
                 Suas gerações
               </h2>
               <p className="text-sm text-gray-500">
                 {displayResults.length}{' '}
-                {displayResults.length === 1 ? 'imagem disponível' : 'imagens disponíveis'}
+                {displayResults.length === 1 ? 'imagem carregada' : 'imagens carregadas'}
               </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-[#111827] shadow-sm"
-                disabled
-              >
-                <Grid3x3 className="h-4 w-4" />
-                Visualização em Grid
-              </button>
             </div>
           </div>
 
           {displayResults.length > 0 ? (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-              {displayResults.map(({ generation, result }) => {
-                const imageUrl = resolvePublicImageUrl(result.image_url) || PLACEHOLDER_IMAGE;
-                const createdDate = result.created_at ? new Date(result.created_at) : null;
+            <>
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                {displayResults.map(({ generation, result }) => {
+                  const imageUrl = resolvePublicImageUrl(result.thumbnail_url || result.image_url) || PLACEHOLDER_IMAGE;
+                  const createdDate = result.created_at ? new Date(result.created_at) : null;
 
-                // Get first category label
-                const firstCategory = generation.garmentTypes[0];
-                const categoryLabel = firstCategory
-                  ? (GarmentCategory[firstCategory as keyof typeof GarmentCategory] || 'Geração')
-                  : 'Geração';
-
-                return (
-                  <div
-                    key={result.id}
-                    className="group relative overflow-hidden rounded-[30px] border border-white/40 bg-white/60 shadow-[0_20px_50px_rgba(20,20,40,0.1)] backdrop-blur cursor-pointer"
-                    onClick={() => setSelectedResult({ generation, result })}
-                  >
-                    <div className="relative aspect-[3/4]">
-                      <Image
-                        src={imageUrl}
-                        alt="Geração AI"
-                        fill
-                        className="object-cover transition-transform duration-500 group-hover:scale-105"
-                        sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 20vw"
-                      />
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/0" />
-                      <div className="absolute left-4 top-4 flex items-center gap-2">
-                        <span className="rounded-full border border-white/40 bg-black/30 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-white backdrop-blur-sm">
-                          {categoryLabel}
-                        </span>
-                      </div>
-                      <div className="absolute inset-x-4 bottom-4 flex items-center justify-between text-white">
-                        <div>
-                          <p className="text-sm font-semibold">
-                            Geração {generation.id.slice(0, 8)}
-                          </p>
-                          <p className="text-xs text-white/70">
-                            {createdDate ? createdDate.toLocaleDateString('pt-BR') : 'Data indefinida'}
-                          </p>
+                  return (
+                    <div
+                      key={result.id}
+                      className="group relative overflow-hidden rounded-[30px] border border-white/40 bg-white/60 shadow-[0_20px_50px_rgba(20,20,40,0.1)] backdrop-blur cursor-pointer"
+                      onClick={() => setSelectedResult({ generation, result })}
+                    >
+                      <div className="relative aspect-[3/4]">
+                        <Image
+                          src={imageUrl}
+                          alt="Geração AI"
+                          fill
+                          className="object-cover transition-transform duration-500 group-hover:scale-105"
+                          sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 20vw"
+                          loading="lazy"
+                          placeholder="blur"
+                          blurDataURL={BLUR_DATA_URL}
+                        />
+                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/0" />
+                        <div className="absolute left-4 top-4 flex items-center gap-2">
+                          <span className="rounded-full border border-white/40 bg-black/30 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-white backdrop-blur-sm">
+                            Geração
+                          </span>
+                        </div>
+                        <div className="absolute inset-x-4 bottom-4 flex items-center justify-between text-white">
+                          <div>
+                            <p className="text-sm font-semibold">
+                              {generation.id.slice(0, 8)}
+                            </p>
+                            <p className="text-xs text-white/70">
+                              {createdDate ? createdDate.toLocaleDateString('pt-BR') : 'Data indefinida'}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+
+              {/* Load More Button */}
+              {pagination.hasMore && (
+                <div className="flex justify-center pt-8">
+                  <button
+                    onClick={loadMore}
+                    disabled={isLoadingMore}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-6 py-3 text-sm font-semibold text-[#111827] shadow-sm hover:bg-gray-50 transition-all disabled:opacity-50"
+                  >
+                    {isLoadingMore ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Carregando...
+                      </>
+                    ) : (
+                      <>
+                        Carregar mais
+                        <span className="text-gray-400">
+                          ({generations.length} de {pagination.total})
+                        </span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <div className="rounded-[30px] border border-dashed border-gray-200 bg-white/70 p-16 text-center shadow-inner">
               <p className="text-base font-semibold text-gray-600">
-                {selectedCategory ? 'Nenhuma geração nesta categoria' : 'Nenhuma geração ainda'}
+                Nenhuma geração ainda
               </p>
               <p className="text-sm text-gray-400">
-                {selectedCategory
-                  ? 'Crie novas gerações com peças desta categoria'
-                  : 'Comece criando sua primeira geração de modelo AI'}
+                Comece criando sua primeira geração de modelo AI
               </p>
               <Link
                 href="/criar"
@@ -400,7 +349,7 @@ export function GaleriaClient({ generations, userCredits }: GaleriaClientProps) 
               <div className="lg:w-1/3 p-6 space-y-6">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="font-inter text-xl font-semibold text-gray-900">
+                    <h3 className="font-freight font-medium text-xl text-gray-900">
                       Detalhes da Geração
                     </h3>
                     <p className="text-sm text-gray-500 mt-1">
@@ -457,6 +406,9 @@ export function GaleriaClient({ generations, userCredits }: GaleriaClientProps) 
           </div>
         </div>
       )}
+
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
   );
 }

@@ -4,14 +4,14 @@ import * as React from 'react';
 import { Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ProgressSteps } from '@/components/generation-flow/progress-steps';
-import { HeightSlider, WeightSlider } from '@/components/generation-flow/height-weight-slider';
+// Height/Weight sliders removed - body size (P, M, G, Plus Size) controls this now
 import { FacialExpressionPicker } from '@/components/generation-flow/facial-expression-picker';
 import { HairColorPicker } from '@/components/generation-flow/hair-color-picker';
-import { AIToolsPanel } from '@/components/generation-flow/ai-tools-panel';
+// AI Tools panel hidden for MVP
+// import { AIToolsPanel } from '@/components/generation-flow/ai-tools-panel';
 import { FormatSelector } from '@/components/generation-flow/format-selector';
 import { PersonalizationCarousel, type CarouselSection } from '@/components/generation-flow/personalization-carousel';
 import { useCustomization } from '@/lib/generation-flow/useCustomization';
-import { useFacialExpressions, useHairColors } from '@/lib/generation-flow/useCustomizationOptions';
 import { createClient } from '@/lib/supabase/client';
 import type { Tables } from '@/types/database.types';
 import type { ImageFormatPreset } from '@/lib/generation-flow/image-formats';
@@ -19,12 +19,14 @@ import type { PoseMetadata } from '@/lib/generation-flow/pose-types';
 import { FloatingPoseBar } from '@/components/generation-flow/floating-pose-bar';
 import { BackgroundStep } from '@/components/generation-flow/background-step';
 import { MainHeader } from '@/components/shared';
+import { ModelCharacteristicsSelector } from '@/components/chat/model-characteristics-selector';
 
 type BackgroundPreset = Tables<'background_presets'>;
 
 const POSE_SELECTION_STORAGE_KEY = 'fotomodel_pose_selection';
 
 // Define carousel sections
+// Note: AI tools section hidden for MVP
 const CAROUSEL_SECTIONS: CarouselSection[] = [
   {
     id: 'format',
@@ -32,9 +34,9 @@ const CAROUSEL_SECTIONS: CarouselSection[] = [
     subtitle: 'Escolha o formato ideal para sua plataforma'
   },
   {
-    id: 'physical',
-    title: 'Atributos Físicos',
-    subtitle: 'Personalize altura e peso da modelo'
+    id: 'model-profile',
+    title: 'Perfil do Modelo',
+    subtitle: 'Defina sexo, faixa etária e tipo de corpo'
   },
   {
     id: 'expression',
@@ -50,11 +52,6 @@ const CAROUSEL_SECTIONS: CarouselSection[] = [
     id: 'background',
     title: 'Cenário & Background',
     subtitle: 'Escolha um preset, faça upload ou peça para a IA criar'
-  },
-  {
-    id: 'ai-tools',
-    title: 'Ferramentas de IA',
-    subtitle: 'Edições avançadas com IA'
   },
 ];
 
@@ -76,10 +73,6 @@ function PersonalizacaoContent() {
   const [headerCredits, setHeaderCredits] = React.useState<number>(0);
 
   const customization = useCustomization(uploadIds, CAROUSEL_SECTIONS.length);
-
-  // Fetch dynamic customization options from database
-  const { expressions, loading: loadingExpressions } = useFacialExpressions();
-  const { colors, loading: loadingColors } = useHairColors();
 
   // Parse upload IDs from URL
   React.useEffect(() => {
@@ -157,38 +150,125 @@ function PersonalizacaoContent() {
 
         // 2. Fetch actual pose data from database
         if (poseIds && poseIds.length > 0) {
-          const { data: posesData, error: posesError } = await (supabase
-            .from('model_poses') as any)
-            .select('*')
-            .in('id', poseIds);
+          const allPoses: PoseMetadata[] = [];
 
-          if (posesError) {
-            console.error('Error fetching poses:', posesError);
-          } else if (posesData) {
-            // Map snake_case to camelCase for TypeScript interface
-            const mappedPoses: PoseMetadata[] = posesData.map((pose: any) => ({
-              id: pose.id,
-              imageUrl: pose.image_url,
-              gender: pose.gender,
-              ageMin: pose.age_min,
-              ageMax: pose.age_max,
-              ageRange: pose.age_range,
-              ethnicity: pose.ethnicity,
-              poseCategory: pose.pose_category,
-              garmentCategories: pose.garment_categories || [],
-              name: pose.name,
-              description: pose.description,
-              tags: pose.tags || [],
-              createdAt: pose.created_at,
-            }));
-            setSelectedPoses(mappedPoses);
+          // Separate different types of pose IDs
+          const regularPoseIds: string[] = [];
+          const userModelIds: string[] = [];
+          const originalPoseIds: string[] = [];
+
+          for (const poseId of poseIds) {
+            if (typeof poseId === 'string') {
+              if (poseId.startsWith('user-model:')) {
+                userModelIds.push(poseId.replace('user-model:', ''));
+              } else if (poseId.startsWith('original:')) {
+                originalPoseIds.push(poseId.replace('original:', ''));
+              } else {
+                regularPoseIds.push(poseId);
+              }
+            } else {
+              regularPoseIds.push(poseId);
+            }
+          }
+
+          // Fetch regular poses from model_poses table
+          if (regularPoseIds.length > 0) {
+            const { data: posesData, error: posesError } = await (supabase
+              .from('model_poses') as any)
+              .select('*')
+              .in('id', regularPoseIds)
+              .eq('is_active', true);
+
+            if (posesError) {
+              console.error('Error fetching model_poses:', posesError);
+            } else if (posesData) {
+              const mappedPoses: PoseMetadata[] = posesData.map((pose: any) => ({
+                id: pose.id,
+                imageUrl: pose.image_url,
+                gender: pose.gender,
+                ageMin: pose.age_min,
+                ageMax: pose.age_max,
+                ageRange: pose.age_range,
+                ethnicity: pose.ethnicity,
+                poseCategory: pose.pose_category,
+                garmentCategories: pose.garment_categories || [],
+                name: pose.name,
+                description: pose.description,
+                tags: pose.tags || [],
+                createdAt: pose.created_at,
+              }));
+              allPoses.push(...mappedPoses);
+            }
+          }
+
+          // Fetch user models from user_models table
+          if (userModelIds.length > 0) {
+            const { data: userModelsData, error: userModelsError } = await (supabase
+              .from('user_models') as any)
+              .select('*')
+              .in('id', userModelIds);
+
+            if (userModelsError) {
+              console.error('Error fetching user_models:', userModelsError);
+            } else if (userModelsData) {
+              const mappedUserModels: PoseMetadata[] = userModelsData.map((model: any) => ({
+                id: `user-model:${model.id}`,
+                imageUrl: model.image_url,
+                gender: model.gender || 'FEMALE',
+                ageMin: model.age_min || 20,
+                ageMax: model.age_max || 40,
+                ageRange: model.age_range || 'TWENTIES',
+                ethnicity: model.ethnicity || 'MIXED',
+                poseCategory: model.pose_category || 'standing',
+                garmentCategories: model.garment_categories || [],
+                name: model.model_name || 'Modelo Personalizado',
+                description: 'Modelo personalizado salvo',
+                tags: [],
+                createdAt: model.created_at,
+              }));
+              allPoses.push(...mappedUserModels);
+            }
+          }
+
+          // Fetch original poses from user_uploads metadata
+          if (originalPoseIds.length > 0) {
+            const { data: originalsData, error: originalsError } = await (supabase
+              .from('user_uploads') as any)
+              .select('id, metadata')
+              .in('id', originalPoseIds);
+
+            if (originalsError) {
+              console.error('Error fetching original poses:', originalsError);
+            } else if (originalsData) {
+              const mappedOriginals: PoseMetadata[] = originalsData.map((upload: any) => ({
+                id: `original:${upload.id}`,
+                imageUrl: upload.metadata?.publicUrl || '',
+                gender: 'FEMALE',
+                ageMin: 20,
+                ageMax: 40,
+                ageRange: 'TWENTIES',
+                ethnicity: 'MIXED',
+                poseCategory: 'original_reference',
+                garmentCategories: [],
+                name: 'Pose Original',
+                description: 'Pose original enviada pelo usuário',
+                tags: ['original'],
+                createdAt: upload.metadata?.created_at || new Date().toISOString(),
+              }));
+              allPoses.push(...mappedOriginals);
+            }
+          }
+
+          // Set all fetched poses
+          if (allPoses.length > 0) {
+            setSelectedPoses(allPoses);
           }
         }
 
         // 3. Fetch garment images
         const { data: uploadsData, error: uploadsError } = await (supabase
           .from('user_uploads') as any)
-          .select('id, metadata')
+          .select('id, file_path, metadata')
           .in('id', uploadIds)
           .eq('is_deleted', false)
           .order('created_at', { ascending: true });
@@ -199,7 +279,9 @@ function PersonalizacaoContent() {
           const images = uploadsData
             .map((upload: any) => ({
               id: upload.id,
-              imageUrl: upload.metadata?.publicUrl || '',
+              // For Bubble uploads, file_path is already a complete URL
+              // For Supabase uploads, use metadata.publicUrl
+              imageUrl: upload.metadata?.publicUrl || upload.file_path || '',
             }))
             .filter((g: any) => g.imageUrl);
 
@@ -309,6 +391,7 @@ function PersonalizacaoContent() {
             metadata: JSON.parse(JSON.stringify({
               hair_color: customization.hairColor,
               ai_tools: customization.aiTools,
+              model_characteristics: customization.modelCharacteristics,
             })),
           }).eq('id', existing.id);
         } else {
@@ -321,6 +404,7 @@ function PersonalizacaoContent() {
             metadata: JSON.parse(JSON.stringify({
               hair_color: customization.hairColor,
               ai_tools: customization.aiTools,
+              model_characteristics: customization.modelCharacteristics,
             })),
           });
         }
@@ -371,7 +455,7 @@ function PersonalizacaoContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gradient-to-br from-[#fdfbf7] via-[#fff] to-[#f7f4ef]">
         <ProgressSteps currentStep={4} canProceed={false} />
         <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
           <div className="flex flex-col items-center gap-3">
@@ -384,7 +468,7 @@ function PersonalizacaoContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-[#fdfbf7] via-[#fff] to-[#f7f4ef]">
       <MainHeader currentPage="criar" credits={headerCredits} />
       {/* Progress Header */}
       <ProgressSteps
@@ -399,7 +483,7 @@ function PersonalizacaoContent() {
       <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto" ref={carouselWrapperRef}>
         {/* Page Header - Compacto */}
         <div className="mb-6 text-center">
-          <h1 className="font-inter text-xl md:text-2xl font-bold text-gray-900 mb-1">
+          <h1 className="font-freight font-medium text-[32px] leading-tight text-[#111827]">
             Personalize sua Modelo
           </h1>
           <button
@@ -426,48 +510,30 @@ function PersonalizacaoContent() {
             />
           </div>
 
-          {/* Section 2: Physical Attributes */}
+          {/* Section 2: Model Profile (Gender, Age, Body Size) */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 md:p-6">
-            <div className="space-y-6">
-              <HeightSlider
-                value={customization.height}
-                onChange={customization.setHeight}
-              />
-              <WeightSlider
-                value={customization.weight}
-                onChange={customization.setWeight}
-              />
-            </div>
+            <ModelCharacteristicsSelector
+              value={customization.modelCharacteristics}
+              onChange={customization.setModelCharacteristics}
+            />
           </div>
 
           {/* Section 3: Facial Expression */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 md:p-6">
-            {loadingExpressions ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-              </div>
-            ) : (
-              <FacialExpressionPicker
-                value={customization.facialExpression}
-                onChange={customization.setFacialExpression}
-                expressions={expressions}
-              />
-            )}
+            <FacialExpressionPicker
+              value={customization.facialExpression}
+              onChange={customization.setFacialExpression}
+              gender={customization.modelCharacteristics.gender}
+            />
           </div>
 
           {/* Section 4: Hair Color */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 md:p-6">
-            {loadingColors ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-              </div>
-            ) : (
-              <HairColorPicker
-                value={customization.hairColor}
-                onChange={customization.setHairColor}
-                colors={colors}
-              />
-            )}
+            <HairColorPicker
+              value={customization.hairColor}
+              onChange={customization.setHairColor}
+              gender={customization.modelCharacteristics.gender}
+            />
           </div>
 
           {/* Section 5: Background */}
@@ -499,13 +565,7 @@ function PersonalizacaoContent() {
             />
           </div>
 
-          {/* Section 6: AI Tools */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 md:p-6">
-            <AIToolsPanel
-              value={customization.aiTools}
-              onChange={customization.setAITools}
-            />
-          </div>
+          {/* AI Tools section hidden for MVP */}
         </PersonalizationCarousel>
       </div>
 
@@ -519,9 +579,8 @@ function PersonalizacaoContent() {
           weight: customization.weight,
           facialExpression: customization.facialExpression,
           hairColor: customization.hairColor,
-          hasAITools: customization.aiTools.removeBackground ||
-                      customization.aiTools.changeBackground.enabled ||
-                      customization.aiTools.addLogo.enabled
+          hasAITools: false, // AI Tools hidden for MVP
+          gender: customization.modelCharacteristics.gender,
         }}
         onAction={handleNext}
         actionLabel={
@@ -539,7 +598,7 @@ export default function PersonalizacaoPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-gradient-to-br from-[#fdfbf7] via-[#fff] to-[#f7f4ef]">
           <MainHeader currentPage="criar" credits={0} />
           <div className="flex items-center justify-center h-screen">
             <div className="flex flex-col items-center gap-3">

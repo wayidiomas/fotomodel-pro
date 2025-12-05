@@ -267,7 +267,7 @@ export default async function CriarPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-[#fdfbf7] via-[#fff] to-[#f7f4ef]">
       <MainHeader currentPage="criar" credits={credits} />
 
       {/* Main Content */}
@@ -282,7 +282,7 @@ export default async function CriarPage() {
               height={24}
             />
           </div>
-          <h1 className="font-inter font-bold text-2xl leading-8 text-gray-900">
+          <h1 className="font-freight font-medium text-3xl leading-8 text-gray-900">
             Ferramentas de Imagem
           </h1>
         </div>

@@ -2,7 +2,16 @@
 
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { ChevronDown, ChevronUp, Settings2 } from 'lucide-react';
 import type { ChatAttachment } from './chat-interface';
+import { ChatActionBar } from './chat-action-bar';
+import { ModelSelectorModal, SelectedModel } from './model-selector-modal';
+import { WardrobeSelectorModal, SelectedGarment } from './wardrobe-selector-modal';
+import {
+  ModelCharacteristicsSelector,
+  ModelCharacteristics,
+} from './model-characteristics-selector';
+import { UploadGarmentModal, UploadedGarment } from './upload-garment-modal';
 
 interface MessageInputProps {
   conversationId: string | null;
@@ -14,6 +23,7 @@ interface MessageInputProps {
     attachments: ChatAttachment[];
   };
   onDraftChange: (draft: { message: string; attachments: ChatAttachment[] }) => void;
+  isNewConversation?: boolean; // If true, keep quick actions expanded with golden border
 }
 
 export const MessageInput: React.FC<MessageInputProps> = ({
@@ -23,27 +33,88 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   userCredits,
   draft,
   onDraftChange,
+  isNewConversation = false,
 }) => {
   const [message, setMessage] = React.useState(draft.message || '');
   const [attachments, setAttachments] = React.useState<ChatAttachment[]>(draft.attachments || []);
   const [isFocused, setIsFocused] = React.useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
-  const lastDraftRef = React.useRef<string>('');
+  // Modal states
+  const [showModelSelector, setShowModelSelector] = React.useState(false);
+  const [showWardrobeSelector, setShowWardrobeSelector] = React.useState(false);
+  const [showUploadGarmentModal, setShowUploadGarmentModal] = React.useState(false);
+
+  // Model characteristics (optional)
+  const [modelCharacteristics, setModelCharacteristics] = React.useState<ModelCharacteristics>({});
+  const [showCharacteristics, setShowCharacteristics] = React.useState(false);
+  const [characteristicsExpanded, setCharacteristicsExpanded] = React.useState(false);
+
+  // File input ref for background
+  const backgroundInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Auto-collapse characteristics when loading starts
   React.useEffect(() => {
-    const serialized = JSON.stringify({
+    if (isLoading) {
+      setCharacteristicsExpanded(false);
+    }
+  }, [isLoading]);
+
+  // Helper to get characteristics summary text
+  const getCharacteristicsSummary = () => {
+    const parts: string[] = [];
+    if (modelCharacteristics.gender) {
+      parts.push(modelCharacteristics.gender === 'FEMALE' ? 'Feminino' : 'Masculino');
+    }
+    if (modelCharacteristics.ageRange) {
+      parts.push(modelCharacteristics.ageRange);
+    }
+    if (modelCharacteristics.bodySize) {
+      const bodySizeLabels: Record<string, string> = {
+        slim: 'Magro',
+        average: 'Médio',
+        athletic: 'Atlético',
+        curvy: 'Curvilíneo',
+        plus: 'Plus Size',
+      };
+      parts.push(bodySizeLabels[modelCharacteristics.bodySize] || modelCharacteristics.bodySize);
+    }
+    return parts.length > 0 ? parts.join(' • ') : 'Não definido';
+  };
+
+  const lastMessageRef = React.useRef<string>('');
+
+  // Track draft from parent to detect external changes
+  const lastParentDraftRef = React.useRef<string>('');
+  const isInternalUpdateRef = React.useRef(false);
+
+  // Sync draft from parent to local state (only when parent draft ACTUALLY changes externally)
+  React.useEffect(() => {
+    const draftMessage = draft.message || '';
+    const draftAttachments = draft.attachments || [];
+
+    const parentDraftSerialized = JSON.stringify({
       conversationId,
-      message: draft.message || '',
-      attachments: draft.attachments || [],
+      message: draftMessage,
+      attachments: draftAttachments,
     });
 
-    if (serialized === lastDraftRef.current) {
+    // If this is the same draft we already processed, skip
+    if (parentDraftSerialized === lastParentDraftRef.current) {
       return;
     }
 
-    lastDraftRef.current = serialized;
-    setMessage(draft.message || '');
-    setAttachments(draft.attachments || []);
+    // If this update was triggered by our own onDraftChange, skip
+    if (isInternalUpdateRef.current) {
+      lastParentDraftRef.current = parentDraftSerialized;
+      isInternalUpdateRef.current = false;
+      return;
+    }
+
+    // External change from parent - update local state
+    lastParentDraftRef.current = parentDraftSerialized;
+    setMessage(draftMessage);
+    setAttachments(draftAttachments);
   }, [draft, conversationId]);
 
   // Auto-resize textarea
@@ -54,6 +125,16 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     }
   }, [message]);
 
+  // Auto-focus when message changes externally (e.g., from improve request)
+  React.useEffect(() => {
+    if (message && message !== lastMessageRef.current && textareaRef.current) {
+      textareaRef.current.focus();
+      // Move cursor to end
+      textareaRef.current.setSelectionRange(message.length, message.length);
+    }
+    lastMessageRef.current = message;
+  }, [message]);
+
   const lastNotifiedRef = React.useRef<string>('');
   React.useEffect(() => {
     const serialized = JSON.stringify({ message, attachments });
@@ -61,6 +142,9 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       return;
     }
     lastNotifiedRef.current = serialized;
+
+    // Mark as internal update so the sync effect doesn't re-apply these changes
+    isInternalUpdateRef.current = true;
     onDraftChange({ message, attachments });
   }, [message, attachments, onDraftChange]);
 
@@ -73,6 +157,13 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     if (success) {
       setMessage('');
       setAttachments([]);
+      setModelCharacteristics({});
+      setShowCharacteristics(false);
+      setCharacteristicsExpanded(false);
+      // Close all modals
+      setShowModelSelector(false);
+      setShowWardrobeSelector(false);
+      setShowUploadGarmentModal(false);
       textareaRef.current?.focus();
       onDraftChange({ message: '', attachments: [] });
     }
@@ -85,30 +176,23 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     }
   };
 
-  const handleGarmentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Convert to base64
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
-      const base64Data = base64String.split(',')[1]; // Remove data:image/...;base64, prefix
-
-      setAttachments((prev) => [
-        ...prev,
-        {
-          type: 'garment',
-          url: base64String,
-          base64Data,
-          mimeType: file.type,
+  // Handler for garment uploaded from computer via modal
+  const handleGarmentFromComputer = (garment: UploadedGarment) => {
+    setAttachments((prev) => [
+      ...prev,
+      {
+        type: 'garment',
+        url: garment.previewUrl,
+        base64Data: garment.base64Data,
+        mimeType: garment.mimeType,
+        metadata: {
+          name: garment.name,
+          category: garment.category,
+          garmentType: garment.category,
+          description: garment.description,
         },
-      ]);
-    };
-    reader.readAsDataURL(file);
-
-    // Reset input
-    e.target.value = '';
+      },
+    ]);
   };
 
   const handleBackgroundUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -141,28 +225,119 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Handler for selecting a model
+  const handleSelectModel = (model: SelectedModel) => {
+    const modelAttachment: ChatAttachment = {
+      type: 'model',
+      referenceId: model.id,
+      url: model.imageUrl || '',
+      metadata: {
+        name: model.name,
+        gender: model.gender,
+        ageRange: model.ageRange || modelCharacteristics.ageRange,
+        heightCm: model.heightCm,
+        weightKg: model.weightKg,
+        bodySize: modelCharacteristics.bodySize,
+      },
+    };
+
+    // Use functional update to avoid stale closure issues
+    // This preserves improve_reference and other non-model attachments
+    setAttachments((prev) => {
+      const filteredAttachments = prev.filter((a) => a.type !== 'model');
+      return [...filteredAttachments, modelAttachment];
+    });
+    // Show characteristics section after selecting model
+    setShowCharacteristics(true);
+  };
+
+  // Update characteristics in existing model attachment
+  React.useEffect(() => {
+    if (!modelCharacteristics.ageRange && !modelCharacteristics.bodySize) return;
+
+    // Use functional update to find model index from current state, not stale closure
+    setAttachments((prev) => {
+      const modelIndex = prev.findIndex((a) => a.type === 'model');
+      if (modelIndex === -1) return prev;
+
+      const updated = [...prev];
+      updated[modelIndex] = {
+        ...updated[modelIndex],
+        metadata: {
+          ...updated[modelIndex].metadata,
+          ageRange: modelCharacteristics.ageRange || updated[modelIndex].metadata?.ageRange,
+          bodySize: modelCharacteristics.bodySize,
+        },
+      };
+      return updated;
+    });
+  }, [modelCharacteristics]);
+
+  // Handler for selecting garments from wardrobe
+  const handleSelectFromWardrobe = (garments: SelectedGarment[]) => {
+    const garmentAttachments: ChatAttachment[] = garments.map((garment) => ({
+      type: 'garment' as const,
+      referenceId: garment.uploadId,
+      url: garment.thumbnailUrl || garment.imageUrl,
+      metadata: {
+        name: garment.name,
+        category: garment.category,
+        garmentType: garment.garmentType,
+      },
+    }));
+
+    // Use functional update to avoid stale closure issues
+    // This preserves improve_reference and other non-garment attachments
+    setAttachments((prev) => {
+      const nonGarmentAttachments = prev.filter((a) => a.type !== 'garment');
+      return [...nonGarmentAttachments, ...garmentAttachments];
+    });
+  };
+
+  // Computed values for action bar
+  const garmentCount = attachments.filter((a) => a.type === 'garment').length;
+  const modelSelected = attachments.some((a) => a.type === 'model');
+  const backgroundSelected = attachments.some((a) => a.type === 'background');
+  const selectedModelId = attachments.find((a) => a.type === 'model')?.referenceId;
+
   return (
-    <div className="border-t border-white/40 bg-white/70 backdrop-blur-xl">
-      <div className="mx-auto max-w-4xl px-4 py-4">
-        {/* Attachments Preview */}
+    <div className="sticky bottom-4 z-20 px-4 pb-4 md:px-8">
+      <div className="mx-auto max-w-5xl rounded-[24px] border border-white/50 bg-white/75 px-3 py-2.5 shadow-[0_16px_38px_rgba(15,23,42,0.1)] backdrop-blur-2xl">
+        {/* Attachments Preview - Compact horizontal strip */}
         {attachments.length > 0 && (
-          <div className="mb-3 flex flex-wrap gap-2">
-            {attachments.map((attachment, index) => (
+          <div className="mb-2 flex items-center gap-3 overflow-x-auto pb-1 pt-1">
+            <span className="flex-shrink-0 font-inter text-xs text-gray-500">
+              Selecionados:
+            </span>
+            {attachments.map((attachment, idx) => (
               <div
-                key={index}
-                className="group relative h-20 w-20 overflow-hidden rounded-lg border border-white/60 bg-white/80 shadow"
+                key={idx}
+                className="group relative h-12 w-12 flex-shrink-0"
               >
-                <img
-                  src={attachment.url}
-                  alt={`Anexo ${index + 1}`}
-                  className="h-full w-full object-cover"
-                />
+                <div className="h-full w-full overflow-hidden rounded-lg border border-white/60 bg-white/80 shadow">
+                  <img
+                    src={attachment.url}
+                    alt={`Anexo ${idx + 1}`}
+                    className="h-full w-full object-cover"
+                  />
+                  <div className="absolute inset-x-0 bottom-0 bg-black/70 px-0.5 py-px">
+                    <p className="truncate text-center font-inter text-[8px] text-white">
+                      {attachment.type === 'garment'
+                        ? 'Roupa'
+                        : attachment.type === 'model'
+                          ? 'Modelo'
+                          : (attachment.type as any) === 'improve_reference'
+                            ? 'Editar'
+                            : 'Fundo'}
+                    </p>
+                  </div>
+                </div>
                 <button
-                  onClick={() => removeAttachment(index)}
-                  className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 opacity-0 transition-opacity group-hover:opacity-100"
+                  onClick={() => removeAttachment(idx)}
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 shadow-md transition-transform hover:scale-110"
                 >
                   <svg
-                    className="h-3 w-3 text-white"
+                    className="h-2.5 w-2.5 text-white"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -175,79 +350,113 @@ export const MessageInput: React.FC<MessageInputProps> = ({
                     />
                   </svg>
                 </button>
-                <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5">
-                  <p className="truncate font-inter text-[10px] text-white">
-                    {attachment.type === 'garment' ? 'Roupa' : 'Fundo'}
-                  </p>
-                </div>
               </div>
             ))}
           </div>
         )}
 
+        {/* Action Bar - Collapse when loading */}
+        <ChatActionBar
+          onUploadGarment={() => setShowUploadGarmentModal(true)}
+          onSelectModel={() => setShowModelSelector(true)}
+          onUploadBackground={() => backgroundInputRef.current?.click()}
+          garmentCount={garmentCount}
+          modelSelected={modelSelected}
+          backgroundSelected={backgroundSelected}
+          forceCollapsed={isLoading}
+          isNewConversation={isNewConversation}
+          className="mb-2"
+        />
+
+        {/* Model Characteristics Selector (optional) - Collapsible */}
+        {(showCharacteristics || modelSelected) && (
+          <div className="mb-2 overflow-hidden rounded-2xl border border-white/60 bg-white/80 shadow-sm backdrop-blur-sm">
+            {/* Collapsed Header - Always visible */}
+            <button
+              onClick={() => setCharacteristicsExpanded(!characteristicsExpanded)}
+              className="flex w-full items-center justify-between px-3 py-2 transition-colors hover:bg-white/50"
+            >
+              <div className="flex items-center gap-2">
+                <Settings2 className="h-4 w-4 text-gray-500" />
+                <span className="font-inter text-xs font-medium text-gray-700">
+                  Personalizar modelo
+                </span>
+                <span className="font-inter text-xs text-gray-400">
+                  {getCharacteristicsSummary()}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {(modelCharacteristics.gender || modelCharacteristics.ageRange || modelCharacteristics.bodySize) && (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setModelCharacteristics({});
+                      if (!modelSelected) setShowCharacteristics(false);
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setModelCharacteristics({});
+                        if (!modelSelected) setShowCharacteristics(false);
+                      }
+                    }}
+                    className="cursor-pointer font-inter text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    Limpar
+                  </span>
+                )}
+                {characteristicsExpanded ? (
+                  <ChevronUp className="h-4 w-4 text-gray-400" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-gray-400" />
+                )}
+              </div>
+            </button>
+
+            {/* Expanded Content */}
+            {characteristicsExpanded && (
+              <div className="border-t border-white/60 px-3 pb-3 pt-2">
+                <ModelCharacteristicsSelector
+                  value={modelCharacteristics}
+                  onChange={setModelCharacteristics}
+                  disabled={isLoading}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Hidden file input for background */}
+        <input
+          ref={backgroundInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleBackgroundUpload}
+          className="hidden"
+        />
+
         {/* Input Area */}
         <div
           className={cn(
-            'rounded-3xl border-2 border-white/50 bg-white/80 shadow-xl backdrop-blur-lg transition-colors',
-            isFocused ? 'border-[#20202a]' : 'border-white/50'
+            'rounded-3xl border-2 bg-white/80 shadow-lg backdrop-blur-lg transition-colors',
+            isFocused
+              ? 'border-[#20202a]'
+              : isNewConversation && garmentCount > 0 && modelSelected
+                ? 'border-amber-400'
+                : 'border-white/50'
           )}
+          style={
+            isNewConversation && garmentCount > 0 && modelSelected && !isFocused
+              ? {
+                  animation: 'pulse-golden-border 2s ease-in-out infinite',
+                }
+              : undefined
+          }
         >
-          <div className="flex items-end gap-2 p-3">
-            {/* Attachment Buttons */}
-            <div className="flex gap-1">
-              {/* Garment Upload */}
-              <label
-                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-gray-100"
-                title="Adicionar roupa"
-              >
-                <svg
-                  className="h-5 w-5 text-gray-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  />
-                </svg>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleGarmentUpload}
-                  className="hidden"
-                />
-              </label>
-
-              {/* Background Upload */}
-              <label
-                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-gray-100"
-                title="Adicionar fundo"
-              >
-                <svg
-                  className="h-5 w-5 text-gray-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
-                  />
-                </svg>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleBackgroundUpload}
-                  className="hidden"
-                />
-              </label>
-            </div>
-
+          <div className="flex items-end gap-2 p-2.5">
             {/* Textarea */}
             <textarea
               ref={textareaRef}
@@ -312,39 +521,60 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             </button>
           </div>
 
-          {/* Footer Info */}
-          <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2">
-            <p className="font-inter text-xs text-gray-500">
-              Shift + Enter para nova linha
-            </p>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1.5">
-                <svg
-                  className="h-3.5 w-3.5 text-gray-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                <span className="font-inter text-xs text-gray-600">
-                  {userCredits} créditos
-                </span>
-              </div>
+          {/* Compact Footer - Credits only */}
+          <div className="flex items-center justify-end px-3 py-1.5">
+            <div className="flex items-center gap-1">
+              <svg
+                className="h-3 w-3 text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span className="font-inter text-[10px] text-gray-500">
+                {userCredits} créditos
+              </span>
             </div>
           </div>
         </div>
-
-        {/* Help Text */}
-        <p className="mt-2 text-center font-inter text-xs text-gray-500">
-          A IA irá fazer perguntas antes de gerar (gratuito). Geração: 2 créditos
-        </p>
       </div>
+
+      {/* Model Selector Modal */}
+      <ModelSelectorModal
+        isOpen={showModelSelector}
+        onClose={() => setShowModelSelector(false)}
+        onSelectModel={handleSelectModel}
+        selectedModelId={selectedModelId}
+      />
+
+      {/* Wardrobe Selector Modal */}
+      <WardrobeSelectorModal
+        isOpen={showWardrobeSelector}
+        onClose={() => setShowWardrobeSelector(false)}
+        onSelectGarments={handleSelectFromWardrobe}
+        selectedIds={attachments
+          .filter((a) => a.type === 'garment' && a.referenceId)
+          .map((a) => a.referenceId as string)}
+        multiSelect={true}
+        maxSelection={2}
+      />
+
+      {/* Upload Garment Modal */}
+      <UploadGarmentModal
+        isOpen={showUploadGarmentModal}
+        onClose={() => setShowUploadGarmentModal(false)}
+        onSelectComputer={handleGarmentFromComputer}
+        onSelectWardrobe={() => {
+          setShowUploadGarmentModal(false);
+          setShowWardrobeSelector(true);
+        }}
+      />
     </div>
   );
 };

@@ -81,7 +81,7 @@ export async function saveUploads(
           file_name: fileName,
           file_size: fileSize,
           mime_type: mimeType,
-          status: 'uploaded' as const,
+          status: 'ready' as const, // Uploads are ready immediately after categorization
           metadata: {
             garmentType,
             pieceType: upload.pieceType,

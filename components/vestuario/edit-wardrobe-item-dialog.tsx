@@ -1,0 +1,375 @@
+'use client';
+
+import * as React from 'react';
+import Image from 'next/image';
+import { createClient } from '@/lib/supabase/client';
+import { uploadUserImage, getStoragePublicUrl } from '@/lib/storage/upload';
+import { GarmentCategory, enumToOptions } from '@/lib/generation-flow/garment-metadata-types';
+import { mapCategoryToSlug } from '@/lib/wardrobe/save-to-wardrobe';
+import type { WardrobeCollectionSummary } from '@/types/wardrobe';
+import type { Tables } from '@/types/database.types';
+
+type WardrobeItemWithUpload = Tables<'wardrobe_items'> & {
+  upload: Tables<'user_uploads'>;
+};
+
+interface EditWardrobeItemDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  item: WardrobeItemWithUpload | null;
+  collections: WardrobeCollectionSummary[];
+  onSuccess?: () => void;
+}
+
+export function EditWardrobeItemDialog({
+  open,
+  onOpenChange,
+  item,
+  collections,
+  onSuccess,
+}: EditWardrobeItemDialogProps) {
+  const [file, setFile] = React.useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = React.useState<string>('');
+  const [pieceName, setPieceName] = React.useState('');
+  const [category, setCategory] = React.useState<keyof typeof GarmentCategory | ''>('');
+  const [collectionId, setCollectionId] = React.useState('');
+  const [description, setDescription] = React.useState('');
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // Initialize form with item data
+  React.useEffect(() => {
+    if (open && item) {
+      setPieceName(item.upload?.file_name || '');
+      setCategory((item.garment_type as keyof typeof GarmentCategory) || '');
+      setCollectionId(item.collection_id || '');
+
+      // Get description from metadata
+      const metadata = item.metadata as any;
+      setDescription(metadata?.description || metadata?.garmentMetadata?.description || '');
+
+      // Set preview URL from existing upload
+      const uploadMetadata = item.upload?.metadata as any;
+      const existingUrl = uploadMetadata?.publicUrl ||
+        getStoragePublicUrl(item.upload?.file_path || '') || '';
+      setPreviewUrl(existingUrl);
+
+      setFile(null);
+      setErrorMessage(null);
+    }
+  }, [open, item]);
+
+  const resetState = React.useCallback(() => {
+    setFile(null);
+    setPreviewUrl('');
+    setPieceName('');
+    setCategory('');
+    setCollectionId('');
+    setDescription('');
+    setErrorMessage(null);
+    setIsSaving(false);
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) {
+      resetState();
+    }
+  }, [open, resetState]);
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextFile = event.target.files?.[0];
+    if (nextFile) {
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(nextFile.type)) {
+        setErrorMessage('Formatos aceitos: JPG, PNG ou WEBP');
+        event.target.value = '';
+        return;
+      }
+      if (nextFile.size > 20 * 1024 * 1024) {
+        setErrorMessage('Limite de 20MB por imagem');
+        event.target.value = '';
+        return;
+      }
+
+      // Revoke old blob URL if it was from a file selection
+      if (previewUrl && previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(previewUrl);
+      }
+
+      setFile(nextFile);
+      setPreviewUrl(URL.createObjectURL(nextFile));
+      setErrorMessage(null);
+      event.target.value = '';
+    }
+  };
+
+  const handleSave = async () => {
+    if (!item) return;
+
+    if (!category) {
+      setErrorMessage('Selecione o tipo de peça');
+      return;
+    }
+    if (!pieceName.trim()) {
+      setErrorMessage('Informe um nome ou referência para a peça');
+      return;
+    }
+    if (!description.trim()) {
+      setErrorMessage('Descreva brevemente a peça');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setErrorMessage(null);
+      const normalizedCategory = category as keyof typeof GarmentCategory;
+
+      const supabase = createClient();
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        throw new Error('Você precisa estar autenticado para editar peças');
+      }
+
+      let uploadId = item.upload_id;
+      let newPublicUrl = previewUrl;
+
+      // If user selected a new file, upload it
+      if (file) {
+        const uploadResult = await uploadUserImage(supabase, user.id, file, file.name);
+        if (!uploadResult.success || !uploadResult.path || !uploadResult.publicUrl) {
+          throw new Error(uploadResult.error || 'Erro ao enviar imagem');
+        }
+
+        const garmentMetadata = {
+          category: normalizedCategory,
+          description,
+        };
+
+        // Create new upload record
+        const { data: uploadRecord, error: uploadError } = await (supabase
+          .from('user_uploads') as any)
+          .insert({
+            user_id: user.id,
+            file_path: uploadResult.path,
+            file_name: pieceName,
+            file_size: file.size,
+            mime_type: file.type,
+            status: 'ready',
+            metadata: {
+              garmentType: 'single',
+              publicUrl: uploadResult.publicUrl,
+              garmentMetadata,
+            },
+          })
+          .select('id')
+          .single();
+
+        if (uploadError || !uploadRecord) {
+          throw new Error(uploadError?.message || 'Não foi possível criar o upload');
+        }
+
+        uploadId = uploadRecord.id;
+        newPublicUrl = uploadResult.publicUrl;
+      } else {
+        // Update existing upload record with new name/metadata
+        const existingMetadata = item.upload?.metadata as any || {};
+        const { error: uploadUpdateError } = await (supabase
+          .from('user_uploads') as any)
+          .update({
+            file_name: pieceName,
+            metadata: {
+              ...existingMetadata,
+              garmentMetadata: {
+                category: normalizedCategory,
+                description,
+              },
+            },
+          })
+          .eq('id', item.upload_id);
+
+        if (uploadUpdateError) {
+          throw new Error(uploadUpdateError.message);
+        }
+      }
+
+      // Update wardrobe item
+      const { error: wardrobeError } = await (supabase
+        .from('wardrobe_items') as any)
+        .update({
+          upload_id: uploadId,
+          collection_id: collectionId || null,
+          category_slug: mapCategoryToSlug(normalizedCategory),
+          garment_type: normalizedCategory,
+          metadata: {
+            category: normalizedCategory,
+            description,
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', item.id);
+
+      if (wardrobeError) {
+        throw new Error(wardrobeError.message);
+      }
+
+      resetState();
+      onOpenChange(false);
+      onSuccess?.();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro inesperado ao salvar peça';
+      setErrorMessage(message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!open || !item) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 backdrop-blur-sm px-4 py-8">
+      <div className="w-full max-w-6xl rounded-[32px] border border-white/30 bg-white/90 p-6 shadow-[0_30px_120px_rgba(10,10,25,0.28)] backdrop-blur-xl">
+        <div className="max-h-[90vh] overflow-y-auto pr-1">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="inline-flex items-center gap-2 rounded-full border border-[#f1e7d3] bg-[#f7f2e7] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-[#4b3f2f]">
+                Editar peça
+              </p>
+              <h2 className="mt-2 font-freight text-2xl font-medium text-[#151515]">
+                Edite os detalhes da peça
+              </h2>
+              <p className="text-sm text-gray-500">
+                Atualize a foto, categoria ou descrição da peça.
+              </p>
+            </div>
+            <button
+              onClick={() => onOpenChange(false)}
+              className="rounded-full border border-white/60 bg-white/70 p-2 text-gray-500 transition hover:text-gray-900"
+              aria-label="Fechar"
+            >
+              ✕
+            </button>
+          </div>
+
+          {errorMessage && (
+            <div className="mt-4 rounded-2xl border-2 border-red-200 bg-red-50 px-4 py-3">
+              <p className="text-sm text-red-700">{errorMessage}</p>
+            </div>
+          )}
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-[1.25fr_0.95fr]">
+            <div className="space-y-4 rounded-[28px] border border-white/40 bg-white/90 p-5 shadow-inner">
+              <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 p-6 text-center">
+                {previewUrl ? (
+                  <div className="relative mx-auto aspect-[3/4] w-full max-w-sm overflow-hidden rounded-2xl">
+                    <Image src={previewUrl} alt="Prévia da peça" fill className="object-contain" />
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-4 py-6">
+                    <Image
+                      src="/assets/images/generation-flow/clothing-items.png"
+                      alt="Placeholder"
+                      width={220}
+                      height={160}
+                      className="object-contain"
+                    />
+                    <p className="text-sm text-gray-500">
+                      Use fotos com boa iluminação e fundo neutro para melhores resultados.
+                    </p>
+                  </div>
+                )}
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                <button
+                  className="mt-4 inline-flex items-center justify-center rounded-2xl bg-[#20202a] px-5 py-2 text-sm font-semibold text-white shadow hover:bg-[#2b2b35]"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {file ? 'Trocar imagem' : 'Alterar imagem'}
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-[#20202a]">Nome / referência da peça</label>
+                <input
+                  type="text"
+                  value={pieceName}
+                  onChange={event => setPieceName(event.target.value)}
+                  placeholder="Ex: Blusa canelada off-white"
+                  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-800 focus:border-[#20202a] focus:ring-[#20202a]"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4 rounded-[28px] border border-white/40 bg-white/95 p-5 shadow-inner">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-[#20202a]">Tipo de peça</label>
+                <select
+                  value={category}
+                  onChange={event => setCategory(event.target.value as keyof typeof GarmentCategory)}
+                  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-800 focus:border-[#20202a] focus:ring-[#20202a]"
+                >
+                  <option value="">Selecione</option>
+                  {enumToOptions(GarmentCategory).map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-[#20202a]">Coleção (opcional)</label>
+                <select
+                  value={collectionId}
+                  onChange={event => setCollectionId(event.target.value)}
+                  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-800 focus:border-[#20202a] focus:ring-[#20202a]"
+                >
+                  <option value="">Sem coleção específica</option>
+                  {collections.map(collection => (
+                    <option key={collection.id} value={collection.id}>
+                      {collection.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-[#20202a]">Descrição rápida</label>
+                <textarea
+                  value={description}
+                  onChange={event => setDescription(event.target.value)}
+                  rows={3}
+                  placeholder="Ex: Blusa canelada em malha leve, gola alta e mangas longas."
+                  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-800 focus:border-[#20202a] focus:ring-[#20202a]"
+                />
+              </div>
+
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-wrap justify-end gap-3">
+            <button
+              onClick={() => onOpenChange(false)}
+              className="rounded-2xl border border-gray-200 bg-white px-5 py-2 text-sm font-semibold text-gray-600"
+              disabled={isSaving}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSave}
+              className="rounded-2xl bg-gradient-to-r from-[#b58a4b] to-[#d0b16b] px-6 py-2 text-sm font-semibold text-white shadow focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#d0b16b] disabled:opacity-60"
+              disabled={isSaving}
+            >
+              {isSaving ? 'Salvando...' : 'Salvar alterações'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

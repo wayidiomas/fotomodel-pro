@@ -65,7 +65,7 @@ export const ProgressSteps: React.FC<ProgressStepsProps> = ({
               {/* Step Label */}
               <span
                 className={cn(
-                  'font-inter font-medium text-sm leading-tight whitespace-nowrap',
+                  'font-freight font-medium text-lg leading-tight whitespace-nowrap',
                   step.number <= currentStep
                     ? 'text-[#111827]'
                     : 'text-[#9ca3af]'

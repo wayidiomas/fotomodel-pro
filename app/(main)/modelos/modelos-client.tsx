@@ -12,6 +12,7 @@ import {
   Library,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useUserModels, useSystemPoses, useInvalidateQueries } from '@/lib/hooks/use-queries';
 
 interface UserModel {
   id: string;
@@ -88,20 +89,57 @@ const ETHNICITY_LABELS: Record<string, string> = {
 };
 
 type ActiveTab = 'my-models' | 'library';
+type AgeRange =
+  | '0-2'
+  | '2-10'
+  | '10-15'
+  | '15-20'
+  | '20-30'
+  | '30-40'
+  | '40-50'
+  | '50-60'
+  | '60+';
+
+const AGE_RANGE_OPTIONS: { value: AgeRange; label: string; description: string; min: number; max: number }[] = [
+  { value: '0-2', label: '0-2', description: 'Bebê', min: 0, max: 2 },
+  { value: '2-10', label: '2-10', description: 'Criança', min: 2, max: 10 },
+  { value: '10-15', label: '10-15', description: 'Pré-adolescente', min: 10, max: 15 },
+  { value: '15-20', label: '15-20', description: 'Adolescente', min: 15, max: 20 },
+  { value: '20-30', label: '20-30', description: 'Jovem adulto', min: 20, max: 30 },
+  { value: '30-40', label: '30-40', description: 'Adulto', min: 30, max: 40 },
+  { value: '40-50', label: '40-50', description: 'Meia idade', min: 40, max: 50 },
+  { value: '50-60', label: '50-60', description: 'Maduro', min: 50, max: 60 },
+  { value: '60+', label: '60+', description: 'Sênior', min: 60, max: 120 },
+];
 
 export const ModelosClient: React.FC<ModelosClientProps> = ({
-  userModels,
-  systemPoses,
+  userModels: initialUserModels,
+  systemPoses: initialSystemPoses,
   userCredits,
 }) => {
   const router = useRouter();
+  const { invalidateModels } = useInvalidateQueries();
+
+  // React Query for user models
+  const { data: userModelsData } = useUserModels();
+  const { data: systemPosesData } = useSystemPoses();
+
+  // Use cached data or fall back to initial SSR data
+  const userModels = (userModelsData || initialUserModels) as UserModel[];
+  const systemPoses = (systemPosesData || initialSystemPoses) as SystemPose[];
+
   const [activeTab, setActiveTab] = React.useState<ActiveTab>('my-models');
   const [selectedModel, setSelectedModel] = React.useState<UserModel | SystemPose | null>(null);
   const [selectedType, setSelectedType] = React.useState<'user' | 'system'>('user');
   const [searchTerm, setSearchTerm] = React.useState('');
   const [filterGender, setFilterGender] = React.useState<string | null>(null);
-  const [filterAgeMin, setFilterAgeMin] = React.useState(1);
-  const [filterAgeMax, setFilterAgeMax] = React.useState(80);
+  const [filterAgeRanges, setFilterAgeRanges] = React.useState<AgeRange[]>([]);
+
+  const toggleAgeRange = React.useCallback((range: AgeRange) => {
+    setFilterAgeRanges((prev) =>
+      prev.includes(range) ? prev.filter((r) => r !== range) : [...prev, range]
+    );
+  }, []);
 
   // Filter user models
   const filteredUserModels = React.useMemo(() => {
@@ -117,14 +155,19 @@ export const ModelosClient: React.FC<ModelosClientProps> = ({
       filtered = filtered.filter((model) => model.gender === filterGender);
     }
 
-    // Age filter
-    filtered = filtered.filter((model) => {
-      if (!model.age_min || !model.age_max) return true;
-      return model.age_min <= filterAgeMax && model.age_max >= filterAgeMin;
-    });
+    if (filterAgeRanges.length > 0) {
+      filtered = filtered.filter((model) => {
+        if (!model.age_min || !model.age_max) return true;
+        return filterAgeRanges.some((range) => {
+          const option = AGE_RANGE_OPTIONS.find((opt) => opt.value === range);
+          if (!option) return true;
+          return model.age_min <= option.max && model.age_max >= option.min;
+        });
+      });
+    }
 
     return filtered;
-  }, [userModels, searchTerm, filterGender, filterAgeMin, filterAgeMax]);
+  }, [userModels, searchTerm, filterGender, filterAgeRanges]);
 
   // Filter system poses
   const filteredSystemPoses = React.useMemo(() => {
@@ -140,14 +183,19 @@ export const ModelosClient: React.FC<ModelosClientProps> = ({
       filtered = filtered.filter((pose) => pose.gender === filterGender);
     }
 
-    // Age filter
-    filtered = filtered.filter((pose) => {
-      if (!pose.age_min || !pose.age_max) return true;
-      return pose.age_min <= filterAgeMax && pose.age_max >= filterAgeMin;
-    });
+    if (filterAgeRanges.length > 0) {
+      filtered = filtered.filter((pose) => {
+        if (!pose.age_min || !pose.age_max) return true;
+        return filterAgeRanges.some((range) => {
+          const option = AGE_RANGE_OPTIONS.find((opt) => opt.value === range);
+          if (!option) return true;
+          return pose.age_min <= option.max && pose.age_max >= option.min;
+        });
+      });
+    }
 
     return filtered;
-  }, [systemPoses, searchTerm, filterGender, filterAgeMin, filterAgeMax]);
+  }, [systemPoses, searchTerm, filterGender, filterAgeRanges]);
 
   const handleUseModel = (modelId: string, isUserModel: boolean) => {
     if (isUserModel) {
@@ -191,7 +239,7 @@ export const ModelosClient: React.FC<ModelosClientProps> = ({
         <div className="max-w-7xl mx-auto">
           {/* Page Header */}
           <div className="mb-8">
-            <h1 className="font-inter font-bold text-3xl text-gray-900 mb-2">
+            <h1 className="font-freight font-medium text-3xl text-gray-900 mb-2">
               Modelos e Poses
             </h1>
             <p className="font-inter text-base text-gray-600">
@@ -258,63 +306,43 @@ export const ModelosClient: React.FC<ModelosClientProps> = ({
               </select>
             </div>
 
-            {/* Age Filter */}
+            {/* Age Filter - chips (same UX as /criar) */}
             <div className="px-4 py-4 rounded-xl border border-white/40 bg-white/60 backdrop-blur shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-inter font-semibold text-sm text-gray-900">Idade</h3>
-                <span className="font-inter font-medium text-sm text-gray-600">
-                  {filterAgeMin} - {filterAgeMax} anos
-                </span>
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h3 className="font-inter font-semibold text-sm text-gray-900">Faixa de idade</h3>
+                  <p className="font-inter text-xs text-gray-500">Selecione uma ou mais</p>
+                </div>
+                {filterAgeRanges.length > 0 && (
+                  <button
+                    onClick={() => setFilterAgeRanges([])}
+                    className="font-inter text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    Limpar
+                  </button>
+                )}
               </div>
-
-              <div className="relative pt-2 pb-4">
-                {/* Slider track background */}
-                <div className="absolute top-1/2 left-0 right-0 h-1.5 bg-gray-200 rounded-full -translate-y-1/2" />
-
-                {/* Active range highlight */}
-                <div
-                  className="absolute top-1/2 h-1.5 bg-[#20202a] rounded-full -translate-y-1/2"
-                  style={{
-                    left: `${((filterAgeMin - 1) / 79) * 100}%`,
-                    right: `${100 - ((filterAgeMax - 1) / 79) * 100}%`,
-                  }}
-                />
-
-                {/* Min range input */}
-                <input
-                  type="range"
-                  min={1}
-                  max={80}
-                  value={filterAgeMin}
-                  onChange={(e) => {
-                    const value = parseInt(e.target.value);
-                    if (value <= filterAgeMax) {
-                      setFilterAgeMin(value);
-                    }
-                  }}
-                  className="absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[#20202a] [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:shadow-md [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-[#20202a] [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:shadow-md top-1/2 -translate-y-1/2"
-                />
-
-                {/* Max range input */}
-                <input
-                  type="range"
-                  min={1}
-                  max={80}
-                  value={filterAgeMax}
-                  onChange={(e) => {
-                    const value = parseInt(e.target.value);
-                    if (value >= filterAgeMin) {
-                      setFilterAgeMax(value);
-                    }
-                  }}
-                  className="absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[#20202a] [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:shadow-md [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-[#20202a] [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:shadow-md top-1/2 -translate-y-1/2"
-                />
-              </div>
-
-              {/* Age range labels */}
-              <div className="flex justify-between text-xs text-gray-500 font-inter">
-                <span>1</span>
-                <span>80</span>
+              <div className="flex flex-wrap gap-2">
+                {AGE_RANGE_OPTIONS.map((range) => {
+                  const isSelected = filterAgeRanges.includes(range.value);
+                  return (
+                    <button
+                      key={range.value}
+                      onClick={() => toggleAgeRange(range.value)}
+                      className={cn(
+                        'flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-inter transition-all',
+                        isSelected
+                          ? 'border-[#20202a] bg-[#20202a] text-white shadow-sm'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-[#20202a]/50 hover:bg-gray-50'
+                      )}
+                    >
+                      <span className="font-semibold">{range.label}</span>
+                      <span className={isSelected ? 'text-white/70 text-xs' : 'text-gray-400 text-xs'}>
+                        {range.description}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -403,8 +431,8 @@ export const ModelosClient: React.FC<ModelosClientProps> = ({
                       ? 'modelo'
                       : 'pose'
                     : isUserTab
-                    ? 'modelos'
-                    : 'poses'}
+                      ? 'modelos'
+                      : 'poses'}
                 </p>
               </div>
             </>
@@ -418,19 +446,19 @@ export const ModelosClient: React.FC<ModelosClientProps> = ({
                   <Library className="w-10 h-10 text-gray-400" />
                 )}
               </div>
-              <h3 className="font-inter font-semibold text-xl text-gray-900 mb-3">
+              <h3 className="font-freight font-medium text-xl text-gray-900 mb-3">
                 {searchTerm || filterGender
                   ? `Nenhum${isUserTab ? ' modelo' : 'a pose'} encontrad${isUserTab ? 'o' : 'a'}`
                   : isUserTab
-                  ? 'Você ainda não tem modelos salvos'
-                  : 'Nenhuma pose disponível'}
+                    ? 'Você ainda não tem modelos salvos'
+                    : 'Nenhuma pose disponível'}
               </h3>
               <p className="font-inter text-sm text-gray-500 mb-6 max-w-md mx-auto">
                 {searchTerm || filterGender
                   ? 'Tente ajustar os filtros para ver mais resultados'
                   : isUserTab
-                  ? 'Salve seus modelos favoritos durante a geração para reutilizá-los depois'
-                  : 'A biblioteca de poses está sendo atualizada'}
+                    ? 'Salve seus modelos favoritos durante a geração para reutilizá-los depois'
+                    : 'A biblioteca de poses está sendo atualizada'}
               </p>
               {!searchTerm && !filterGender && isUserTab && (
                 <button
@@ -466,7 +494,7 @@ export const ModelosClient: React.FC<ModelosClientProps> = ({
                 {/* Header */}
                 <div className="flex items-start justify-between mb-6">
                   <div>
-                    <h2 className="font-inter font-bold text-xl text-gray-900 mb-1">
+                    <h2 className="font-freight font-medium text-2xl text-gray-900 mb-1">
                       {'model_name' in selectedModel ? selectedModel.model_name : selectedModel.name || 'Pose'}
                     </h2>
                     <p className="font-inter text-sm text-gray-500">

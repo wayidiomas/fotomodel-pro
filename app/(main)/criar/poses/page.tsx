@@ -78,7 +78,7 @@ export default async function PoseSelectionPage({ searchParams }: PoseSelectionP
   console.log('✅ Rendering PoseSelectionClient with IDs:', uploadIds);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-[#fdfbf7] via-[#fff] to-[#f7f4ef]">
       <MainHeader currentPage="criar" credits={credits} />
       <PoseSelectionClient uploadIds={uploadIds} categorySlug={categorySlug} />
     </div>

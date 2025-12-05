@@ -14,8 +14,9 @@ export interface VirtualTryOnParams {
   gender: 'MALE' | 'FEMALE' | 'NON_BINARY';
   poseCategory: string;
   ageRange?: string;
-  height?: number; // cm
-  weight?: number; // kg
+  bodySize?: 'P' | 'M' | 'G' | 'plus-size'; // Body size category
+  height?: number; // cm (derived from age)
+  weight?: number; // kg (derived from bodySize)
   facialExpression?: string;
 
   // Styling
@@ -39,6 +40,7 @@ export function createVirtualTryOnPrompt(params: VirtualTryOnParams): string {
     gender,
     poseCategory,
     ageRange,
+    bodySize,
     height,
     weight,
     facialExpression,
@@ -52,6 +54,7 @@ export function createVirtualTryOnPrompt(params: VirtualTryOnParams): string {
     gender,
     poseCategory,
     ageRange,
+    bodySize,
     height,
     weight,
     facialExpression,
@@ -168,7 +171,44 @@ The logo should appear as if it was originally part of the garment or photo comp
 }
 
 /**
- * Helper: Build model description
+ * Get natural language age description
+ */
+function getAgeDescription(ageRange?: string, gender?: string): string {
+  const isMale = gender === 'MALE';
+
+  const ageDescriptions: Record<string, string> = {
+    '0-2': 'a baby/infant',
+    '2-10': `a young ${isMale ? 'boy' : 'girl'} child`,
+    '10-15': `a pre-teen ${isMale ? 'boy' : 'girl'}`,
+    '15-20': `a teenage ${isMale ? 'boy' : 'girl'}`,
+    '20-30': `a young adult ${isMale ? 'man' : 'woman'} in their twenties`,
+    '30-40': `an adult ${isMale ? 'man' : 'woman'} in their thirties`,
+    '40-50': `a middle-aged ${isMale ? 'man' : 'woman'} in their forties`,
+    '50-60': `a mature ${isMale ? 'man' : 'woman'} in their fifties`,
+    '60+': `a senior ${isMale ? 'man' : 'woman'}`,
+  };
+
+  return ageDescriptions[ageRange || ''] || `an adult ${isMale ? 'man' : 'woman'}`;
+}
+
+/**
+ * Get natural language body type description
+ */
+function getBodyTypeDescription(bodySize?: string, gender?: string): string {
+  const isMale = gender === 'MALE';
+
+  const bodyDescriptions: Record<string, string> = {
+    'P': `with a petite, slim ${isMale ? 'lean' : 'delicate'} frame and slender build`,
+    'M': `with an average, well-proportioned ${isMale ? 'athletic' : 'balanced'} build`,
+    'G': `with a larger, ${isMale ? 'broad-shouldered sturdy' : 'curvy voluptuous'} body type`,
+    'plus-size': `with a plus-size, ${isMale ? 'heavy-set, full-bodied' : 'full-figured, beautifully curvy'} physique - this is NON-NEGOTIABLE`,
+  };
+
+  return bodyDescriptions[bodySize || ''] || `with a proportionate build`;
+}
+
+/**
+ * Helper: Build model description with rich, descriptive language
  */
 function buildModelDescription(params: {
   gender: string;
@@ -176,38 +216,31 @@ function buildModelDescription(params: {
   ageRange?: string;
   height?: number;
   weight?: number;
+  bodySize?: string;
   facialExpression?: string;
 }): string {
   const parts: string[] = [];
 
-  // Gender
-  const genderLabels = {
-    MALE: 'male',
-    FEMALE: 'female',
-    NON_BINARY: 'non-binary',
-  };
-  parts.push(`${genderLabels[params.gender as keyof typeof genderLabels] || 'female'} model`);
+  // Age description (natural language)
+  const ageDesc = getAgeDescription(params.ageRange, params.gender);
+  parts.push(ageDesc);
 
-  // Age range
-  if (params.ageRange) {
-    parts.push(`in their ${params.ageRange.toLowerCase()}`);
+  // Body type description (rich and descriptive)
+  const bodyDesc = getBodyTypeDescription(params.bodySize, params.gender);
+  parts.push(bodyDesc);
+
+  // Add specific measurements for context
+  if (params.height && params.weight) {
+    parts.push(`(approximately ${params.height}cm, ${params.weight}kg)`);
   }
 
-  // Height and weight
-  if (params.height) {
-    parts.push(`${params.height}cm tall`);
-  }
-  if (params.weight) {
-    parts.push(`${params.weight}kg`);
-  }
-
-  // Pose
+  // Pose - with emphasis
   const poseLabel = params.poseCategory.toLowerCase().replace(/_/g, ' ');
-  parts.push(`in a ${poseLabel} pose`);
+  parts.push(`standing in a ${poseLabel} pose that MUST be followed EXACTLY from the reference image`);
 
   // Facial expression
   if (params.facialExpression) {
-    parts.push(`with a ${params.facialExpression} expression`);
+    parts.push(`with a natural ${params.facialExpression} expression`);
   }
 
   return parts.join(', ');

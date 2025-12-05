@@ -17,89 +17,100 @@ export interface GenerationWithCategories {
     id: string;
     image_url: string;
     thumbnail_url: string | null;
-    has_watermark: boolean;
     is_purchased: boolean;
     created_at: string;
   }>;
 }
 
 /**
- * Extracts garment categories from a generation's upload IDs
- */
-export async function extractGenerationCategories(
-  supabase: SupabaseClient,
-  generation: any
-): Promise<{ categories: string[]; garmentTypes: string[] }> {
-  try {
-    // Extract uploadIds from input_data
-    const uploadIds = generation.input_data?.uploadIds || [];
-
-    if (uploadIds.length === 0) {
-      return { categories: [], garmentTypes: [] };
-    }
-
-    // Fetch uploads to get metadata
-    const { data: uploads, error } = await supabase
-      .from('user_uploads')
-      .select('metadata')
-      .in('id', uploadIds);
-
-    if (error || !uploads) {
-      console.error('Error fetching uploads for categories:', error);
-      return { categories: [], garmentTypes: [] };
-    }
-
-    // Extract categories from metadata
-    const garmentTypes: string[] = [];
-    const categorySlugs: string[] = [];
-
-    uploads.forEach((upload) => {
-      const metadata = upload.metadata as any;
-      const category = metadata?.garmentMetadata?.category;
-
-      if (category) {
-        garmentTypes.push(category);
-        const slug = mapCategoryToSlug(category);
-        if (slug && slug !== 'other') {
-          categorySlugs.push(slug);
-        }
-      }
-    });
-
-    // Return unique values
-    return {
-      categories: [...new Set(categorySlugs)],
-      garmentTypes: [...new Set(garmentTypes)],
-    };
-  } catch (error) {
-    console.error('Error in extractGenerationCategories:', error);
-    return { categories: [], garmentTypes: [] };
-  }
-}
-
-/**
- * Enriches generations with category information
+ * Enriches generations with category information - BATCHED (single query)
+ * Avoids N+1 queries by fetching all uploads at once
  */
 export async function enrichGenerationsWithCategories(
   supabase: SupabaseClient,
   generations: any[]
 ): Promise<GenerationWithCategories[]> {
-  const enriched = await Promise.all(
-    generations.map(async (generation) => {
-      const { categories, garmentTypes } = await extractGenerationCategories(
-        supabase,
-        generation
-      );
+  if (!generations.length) return [];
+
+  try {
+    // 1. Collect ALL uploadIds from all generations
+    const uploadIdMap = new Map<string, string[]>(); // generationId -> uploadIds
+    const allUploadIds: string[] = [];
+
+    generations.forEach((gen) => {
+      const uploadIds = gen.input_data?.uploadIds || [];
+      uploadIdMap.set(gen.id, uploadIds);
+      allUploadIds.push(...uploadIds);
+    });
+
+    // 2. Single batched query for all uploads
+    const uniqueUploadIds = [...new Set(allUploadIds)];
+
+    if (uniqueUploadIds.length === 0) {
+      // No uploads to fetch - return generations with empty categories
+      return generations.map((gen) => ({
+        ...gen,
+        categories: [],
+        garmentTypes: [],
+      }));
+    }
+
+    const { data: uploads, error } = await supabase
+      .from('user_uploads')
+      .select('id, metadata')
+      .in('id', uniqueUploadIds);
+
+    if (error) {
+      console.error('Error fetching uploads for categories:', error);
+      return generations.map((gen) => ({
+        ...gen,
+        categories: [],
+        garmentTypes: [],
+      }));
+    }
+
+    // 3. Build uploadId -> category mapping
+    const uploadCategoryMap = new Map<string, { category: string; slug: string }>();
+
+    uploads?.forEach((upload) => {
+      const metadata = upload.metadata as any;
+      const category = metadata?.garmentMetadata?.category;
+      if (category) {
+        const slug = mapCategoryToSlug(category);
+        uploadCategoryMap.set(upload.id, { category, slug: slug || 'other' });
+      }
+    });
+
+    // 4. Map categories back to each generation
+    return generations.map((gen) => {
+      const genUploadIds = uploadIdMap.get(gen.id) || [];
+      const garmentTypes: string[] = [];
+      const categorySlugs: string[] = [];
+
+      genUploadIds.forEach((uploadId) => {
+        const catInfo = uploadCategoryMap.get(uploadId);
+        if (catInfo) {
+          garmentTypes.push(catInfo.category);
+          if (catInfo.slug !== 'other') {
+            categorySlugs.push(catInfo.slug);
+          }
+        }
+      });
 
       return {
-        ...generation,
-        categories,
-        garmentTypes,
+        ...gen,
+        categories: [...new Set(categorySlugs)],
+        garmentTypes: [...new Set(garmentTypes)],
       };
-    })
-  );
-
-  return enriched;
+    });
+  } catch (error) {
+    console.error('Error in enrichGenerationsWithCategories:', error);
+    return generations.map((gen) => ({
+      ...gen,
+      categories: [],
+      garmentTypes: [],
+    }));
+  }
 }
 
 /**

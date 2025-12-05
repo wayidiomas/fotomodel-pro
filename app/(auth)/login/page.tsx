@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { Suspense, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Button, VerificationCodeInput } from '@/components/ui';
@@ -63,7 +63,7 @@ function LoginStep({
           <div className="flex flex-col items-center gap-6">
             {/* Welcome Text - gap: 10px (Figma) */}
             <div className="flex w-full flex-col items-center gap-2.5 text-center">
-              <h2 className="w-full font-inter text-[36px] font-semibold leading-[1.1] tracking-tight text-[#20202a]">
+              <h2 className="w-full font-freight text-[40px] font-medium leading-[1.1] tracking-tight text-[#20202a]">
                 Bem-vindo à Fotomodel
               </h2>
               <p className="w-full font-inter text-[16px] font-normal leading-[1.6] text-black/60">
@@ -127,13 +127,13 @@ function LoginStep({
                 />
               </div>
 
-              <h2 className="mb-4 font-inter text-5xl font-semibold leading-[1.1] tracking-tight text-[#20202a]">
+              <h2 className="mb-4 font-freight text-6xl font-medium leading-[1.1] tracking-tight text-[#20202a]">
                 Bem-vindo à<br />Fotomodel
               </h2>
-              <p className="mb-6 font-inter text-xl font-normal leading-relaxed text-slate-500">
+              <p className="mb-3 font-inter text-xl font-semibold leading-relaxed text-[#161616] drop-shadow-[0_6px_16px_rgba(0,0,0,0.08)]">
                 Modelos Virtuais. Resultados Reais.
               </p>
-              <p className="font-inter text-base leading-relaxed text-slate-400">
+              <p className="font-inter text-base leading-relaxed text-[#2c2c2c] drop-shadow-[0_4px_12px_rgba(0,0,0,0.06)]">
                 Crie modelos virtuais realistas com IA para suas roupas e produtos.
                 Economize tempo e dinheiro em produções fotográficas.
               </p>
@@ -142,8 +142,14 @@ function LoginStep({
 
           {/* Right Side: Login Card */}
           <div className="flex flex-[1.3] items-center justify-center">
-            <div className="relative z-10 flex w-full max-w-[340px] flex-col rounded-2xl bg-white/95 p-6 shadow-2xl backdrop-blur-xl">
-              <h3 className="mb-5 text-center font-inter text-[28px] font-semibold leading-tight text-black">
+            <div
+              className="relative z-10 flex w-full max-w-[360px] flex-col rounded-[22px] border border-white/70 bg-white/92 p-7 shadow-[0_24px_60px_rgba(15,23,42,0.14)] backdrop-blur-2xl"
+              style={{
+                backgroundImage:
+                  'linear-gradient(145deg, rgba(232,223,207,0.32) 0%, rgba(255,255,255,0.92) 50%, rgba(255,255,255,0.98) 100%)',
+              }}
+            >
+              <h3 className="mb-5 text-center font-freight text-[32px] font-medium leading-tight text-black">
                 Faça seu login
               </h3>
 
@@ -282,7 +288,7 @@ function PhoneStep({
           <div className="flex flex-col items-center gap-6">
             {/* Title */}
             <div className="flex w-full flex-col items-center gap-4 text-center">
-              <h2 className="w-full font-inter text-[36px] font-semibold leading-[1.1] tracking-tight text-black">
+              <h2 className="w-full font-freight text-[40px] font-medium leading-[1.1] tracking-tight text-black">
                 Qual seu número?
               </h2>
 
@@ -355,7 +361,13 @@ function PhoneStep({
 
           {/* Right Side: Phone Card */}
           <div className="flex flex-1 items-center justify-center">
-            <div className="relative z-10 flex w-full max-w-[420px] flex-col rounded-3xl bg-white/95 p-10 shadow-2xl backdrop-blur-xl">
+            <div
+              className="relative z-10 flex w-full max-w-[420px] flex-col rounded-3xl border border-white/70 bg-white/92 p-10 shadow-[0_24px_60px_rgba(15,23,42,0.14)] backdrop-blur-2xl"
+              style={{
+                backgroundImage:
+                  'linear-gradient(150deg, rgba(232,223,207,0.28) 0%, rgba(255,255,255,0.94) 40%, rgba(255,255,255,0.98) 100%)',
+              }}
+            >
               {/* WhatsApp Icon + Title */}
               <div className="mb-8 flex flex-col items-center gap-6 text-center">
                 {/* WhatsApp Icon Circle */}
@@ -370,7 +382,7 @@ function PhoneStep({
                 </div>
 
                 {/* Title */}
-                <h3 className="font-inter text-[36px] font-semibold leading-tight text-black">
+                <h3 className="font-freight text-[40px] font-medium leading-tight text-black">
                   Qual seu número?
                 </h3>
 
@@ -551,7 +563,7 @@ function VerifyStep({
         <div className="w-full max-w-[343px] animate-slide-up">
           <div className="flex flex-col items-center gap-6">
             {/* Title */}
-            <h1 className="mb-4 text-center font-inter text-[20px] font-normal tracking-[-0.2px] text-black">
+            <h1 className="mb-4 text-center font-freight text-[24px] font-medium tracking-[-0.2px] text-black">
               Login com WhatsApp
             </h1>
 
@@ -637,7 +649,13 @@ function VerifyStep({
 
           {/* Right Side: Verification Card */}
           <div className="flex flex-1 items-center justify-center">
-            <div className="relative z-10 flex w-full max-w-[420px] flex-col rounded-3xl bg-white/95 p-10 shadow-2xl backdrop-blur-xl">
+            <div
+              className="relative z-10 flex w-full max-w-[420px] flex-col rounded-3xl border border-white/70 bg-white/92 p-10 shadow-[0_24px_60px_rgba(15,23,42,0.14)] backdrop-blur-2xl"
+              style={{
+                backgroundImage:
+                  'linear-gradient(150deg, rgba(232,223,207,0.28) 0%, rgba(255,255,255,0.94) 40%, rgba(255,255,255,0.98) 100%)',
+              }}
+            >
               {/* WhatsApp Icon + Title */}
               <div className="mb-8 flex flex-col items-center gap-6 text-center">
                 {/* WhatsApp Icon Circle */}
@@ -652,7 +670,7 @@ function VerifyStep({
                 </div>
 
                 {/* Title */}
-                <h3 className="font-inter text-[36px] font-semibold leading-tight text-black">
+                <h3 className="font-freight text-[40px] font-medium leading-tight text-black">
                   Login com WhatsApp
                 </h3>
               </div>
@@ -730,7 +748,7 @@ function VerifyStep({
  * - Mobile: Slideshow entre yoga-1 e yoga-2 com transições suaves
  * - Desktop: Efeito parallax responsivo ao movimento do mouse
  */
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -742,6 +760,7 @@ export default function LoginPage() {
   const [mounted, setMounted] = useState(false);
 
   // Handle OAuth code from URL (when Supabase redirects back to /login)
+  // Note: The database trigger 'on_auth_user_created' automatically creates the public.users record
   useEffect(() => {
     const code = searchParams.get('code');
     if (code) {
@@ -753,7 +772,6 @@ export default function LoginPage() {
 
         if (error) {
           console.error('OAuth callback error:', error);
-          // Remove code from URL
           router.replace('/login');
           return;
         }
@@ -762,37 +780,24 @@ export default function LoginPage() {
         const { data: { user } } = await supabase.auth.getUser();
 
         if (user) {
-          // Check if user exists in database
-          // Note: .single() throws error when no rows found, so we check error.code
-          const { data: existingUser, error: userError } = await (supabase
+          // Small delay to ensure the database trigger has completed
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+          // Check if user was just created (new user) or existing
+          const { data: existingUser } = await (supabase
             .from('users') as any)
-            .select('id')
+            .select('id, created_at')
             .eq('id', user.id)
             .single();
 
-          // PGRST116 = "no rows returned" - means new user
-          if (userError?.code === 'PGRST116' || !existingUser) {
-            // New user - create entry in public.users (fallback if trigger didn't work)
-            console.log('New user detected, creating public.users record');
-            const { error: insertError } = await (supabase
-              .from('users') as any)
-              .insert({
-                id: user.id,
-                email: user.email,
-                phone: user.phone,
-                credits: 10,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              });
+          // Determine if new user by checking if created_at is within last 30 seconds
+          const isNewUser = existingUser &&
+            (new Date().getTime() - new Date(existingUser.created_at).getTime()) < 30000;
 
-            if (insertError && insertError.code !== '23505') {
-              // 23505 = unique violation (user already exists, which is fine)
-              console.error('Error creating public user:', insertError);
-            }
-
+          if (isNewUser) {
+            console.log('New user detected, redirecting to onboarding');
             router.push('/onboarding');
           } else {
-            // Existing user - go to dashboard
             console.log('Existing user, redirecting to dashboard');
             router.push('/dashboard');
           }
@@ -1001,71 +1006,71 @@ export default function LoginPage() {
       {/* Background com Parallax (desktop) ou Slideshow (mobile) - Apenas no Login */}
       {currentStep === 'login' && (
         <div className="fixed inset-0 -z-10 pointer-events-none lg:hidden">
-        <div className="relative h-screen w-full overflow-hidden">
-          {/* Yoga Image 1 - Camada de fundo (movimento menor) */}
-          <div
-            className="absolute inset-0 will-change-transform pointer-events-none"
-            style={
-              isDesktop
-                ? {
+          <div className="relative h-screen w-full overflow-hidden">
+            {/* Yoga Image 1 - Camada de fundo (movimento menor) */}
+            <div
+              className="absolute inset-0 will-change-transform pointer-events-none"
+              style={
+                isDesktop
+                  ? {
                     transform: `translate3d(${mousePosition.x * 15}px, ${mousePosition.y * 15}px, 0) scale(1.1)`,
                     transition: 'transform 0.1s ease-out',
                   }
-                : {
+                  : {
                     transform: 'scale(1.2)',
                   }
-            }
-          >
-            <img
-              src="/assets/images/background-yoga-1.png"
-              alt="Yoga model background 1"
-              className="h-full w-full object-cover transition-opacity duration-800 select-none pointer-events-none"
-              draggable="false"
-              style={{
-                opacity: isDesktop ? 1 : currentImageIndex === 0 ? 1 : 0,
-                objectPosition: isDesktop ? 'center' : 'center 30%',
-              }}
-            />
-          </div>
+              }
+            >
+              <img
+                src="/assets/images/background-yoga-1.png"
+                alt="Yoga model background 1"
+                className="h-full w-full object-cover transition-opacity duration-800 select-none pointer-events-none"
+                draggable="false"
+                style={{
+                  opacity: isDesktop ? 1 : currentImageIndex === 0 ? 1 : 0,
+                  objectPosition: isDesktop ? 'center' : 'center 30%',
+                }}
+              />
+            </div>
 
-          {/* Yoga Image 2 - Camada frontal (movimento maior) */}
-          <div
-            className="absolute inset-0 will-change-transform pointer-events-none"
-            style={
-              isDesktop
-                ? {
+            {/* Yoga Image 2 - Camada frontal (movimento maior) */}
+            <div
+              className="absolute inset-0 will-change-transform pointer-events-none"
+              style={
+                isDesktop
+                  ? {
                     transform: `translate3d(${mousePosition.x * 30}px, ${mousePosition.y * 30}px, 0) scale(1.1)`,
                     transition: 'transform 0.1s ease-out',
                     opacity: 0.7,
                   }
-                : {
+                  : {
                     transform: 'scale(1.2)',
                   }
-            }
-          >
-            <img
-              src="/assets/images/background-yoga-2.png"
-              alt="Yoga model background 2"
-              className="h-full w-full object-cover transition-opacity duration-800 select-none pointer-events-none"
-              draggable="false"
+              }
+            >
+              <img
+                src="/assets/images/background-yoga-2.png"
+                alt="Yoga model background 2"
+                className="h-full w-full object-cover transition-opacity duration-800 select-none pointer-events-none"
+                draggable="false"
+                style={{
+                  opacity: isDesktop ? 0.7 : currentImageIndex === 1 ? 1 : 0,
+                  objectPosition: isDesktop ? 'center' : 'center 30%',
+                }}
+              />
+            </div>
+
+            {/* Gradient Overlay */}
+            <div
+              className="absolute inset-x-0 bottom-0 h-[524px] pointer-events-none lg:inset-0 lg:h-full"
               style={{
-                opacity: isDesktop ? 0.7 : currentImageIndex === 1 ? 1 : 0,
-                objectPosition: isDesktop ? 'center' : 'center 30%',
+                background: isDesktop
+                  ? 'linear-gradient(180deg, rgba(255,255,255,0) 7.242%, rgba(255,255,255,0.4) 45%, #ffffff 61.522%)'
+                  : 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.2) 25%, rgba(255,255,255,0.7) 50%, #ffffff 75%)',
               }}
             />
           </div>
-
-          {/* Gradient Overlay */}
-          <div
-            className="absolute inset-x-0 bottom-0 h-[524px] pointer-events-none lg:inset-0 lg:h-full"
-            style={{
-              background: isDesktop
-                ? 'linear-gradient(180deg, rgba(255,255,255,0) 7.242%, rgba(255,255,255,0.4) 45%, #ffffff 61.522%)'
-                : 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.2) 25%, rgba(255,255,255,0.7) 50%, #ffffff 75%)',
-            }}
-          />
         </div>
-      </div>
       )}
 
       {/* Main Content Container */}
@@ -1124,73 +1129,83 @@ export default function LoginPage() {
 
         {/* Desktop Spotlight Cards */}
         <div className="pointer-events-none absolute inset-0 hidden lg:block" aria-hidden="true">
-            <div className="flex h-full w-full items-center justify-center px-8">
-              <div className="relative w-full max-w-[1400px]">
-                <div className="flex items-center justify-between gap-16">
-                  <div className="flex-[0.7]" />
-                  <div className="relative flex flex-[1.3] items-center justify-center">
-                    <div className="relative w-full max-w-[340px]">
-                      {modelSpotlights.map((spotlight) => {
-                        const baseRotation = `rotate(${spotlight.rotation}deg)`;
-                        const parallaxTranslation = isDesktop
-                          ? `translate3d(${mousePosition.x * spotlight.translate.x}px, ${
-                              mousePosition.y * spotlight.translate.y
-                            }px, 0)`
-                          : 'translate3d(0px, 0px, 0)';
-                        const finalTransform = `${parallaxTranslation} ${baseRotation}`;
-                        const entryTransform = `translate3d(${spotlight.entry.offset.x}px, ${spotlight.entry.offset.y}px, 0) scale(${spotlight.entry.scale}) rotate(${spotlight.entry.rotation}deg)`;
-                        const transform = spotlightsReady ? finalTransform : entryTransform;
-                        const transitionDuration = spotlightsSettled ? '0.25s' : '0.75s';
-                        const transitionTimingFunction = spotlightsSettled
-                          ? 'cubic-bezier(0.27, 0.67, 0.4, 0.98)'
-                          : 'cubic-bezier(0.16, 1, 0.3, 1)';
-                        const transitionDelay = spotlightsSettled ? '0ms' : `${spotlight.entry.delay}ms`;
+          <div className="flex h-full w-full items-center justify-center px-8">
+            <div className="relative w-full max-w-[1400px]">
+              <div className="flex items-center justify-between gap-16">
+                <div className="flex-[0.7]" />
+                <div className="relative flex flex-[1.3] items-center justify-center">
+                  <div className="relative w-full max-w-[340px]">
+                    {modelSpotlights.map((spotlight) => {
+                      const baseRotation = `rotate(${spotlight.rotation}deg)`;
+                      const parallaxTranslation = isDesktop
+                        ? `translate3d(${mousePosition.x * spotlight.translate.x}px, ${mousePosition.y * spotlight.translate.y
+                        }px, 0)`
+                        : 'translate3d(0px, 0px, 0)';
+                      const finalTransform = `${parallaxTranslation} ${baseRotation}`;
+                      const entryTransform = `translate3d(${spotlight.entry.offset.x}px, ${spotlight.entry.offset.y}px, 0) scale(${spotlight.entry.scale}) rotate(${spotlight.entry.rotation}deg)`;
+                      const transform = spotlightsReady ? finalTransform : entryTransform;
+                      const transitionDuration = spotlightsSettled ? '0.25s' : '0.75s';
+                      const transitionTimingFunction = spotlightsSettled
+                        ? 'cubic-bezier(0.27, 0.67, 0.4, 0.98)'
+                        : 'cubic-bezier(0.16, 1, 0.3, 1)';
+                      const transitionDelay = spotlightsSettled ? '0ms' : `${spotlight.entry.delay}ms`;
 
-                        return (
-                          <div
-                            key={spotlight.id}
-                            className="absolute overflow-hidden rounded-[32px] border border-white/30 bg-white/12 shadow-[0_32px_70px_-24px_rgba(24,22,35,0.55)] backdrop-blur-[2px] will-change-transform"
-                            style={{
-                              ...toCSSPosition(spotlight.position),
-                              width: `${spotlight.size.width}px`,
-                              height: `${spotlight.size.height}px`,
-                              zIndex: spotlight.zIndex,
-                              transform,
-                              opacity: spotlightsReady ? 1 : 0,
-                              transition: `transform ${transitionDuration} ${transitionTimingFunction}, opacity 0.6s ease, top 0.8s cubic-bezier(0.16, 1, 0.3, 1), left 0.8s cubic-bezier(0.16, 1, 0.3, 1), right 0.8s cubic-bezier(0.16, 1, 0.3, 1), bottom 0.8s cubic-bezier(0.16, 1, 0.3, 1)`,
-                              transitionDelay,
-                            }}
-                          >
-                            <Image
-                              src={spotlight.image}
-                              alt={spotlight.alt}
-                              fill
-                              sizes="(min-width: 1024px) 320px, 100vw"
-                              className="object-cover"
-                              style={{ objectPosition: spotlight.objectPosition }}
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/25 to-transparent mix-blend-multiply" />
-                            <div className="absolute inset-x-4 bottom-4 text-white drop-shadow-[0_6px_20px_rgba(13,15,20,0.35)]">
-                              <span className="inline-flex items-center rounded-full bg-white/20 px-3 py-1 font-inter text-[11px] font-medium uppercase tracking-[0.18em]">
-                                {spotlight.badge}
-                              </span>
-                              <p className="mt-3 font-inter text-[20px] font-semibold leading-tight">
-                                {spotlight.title}
-                              </p>
-                              <p className="mt-1 font-inter text-xs text-white/80">
-                                {spotlight.caption}
-                              </p>
-                            </div>
+                      return (
+                        <div
+                          key={spotlight.id}
+                          className="absolute overflow-hidden rounded-[32px] border border-white/30 bg-white/12 shadow-[0_32px_70px_-24px_rgba(24,22,35,0.55)] backdrop-blur-[2px] will-change-transform"
+                          style={{
+                            ...toCSSPosition(spotlight.position),
+                            width: `${spotlight.size.width}px`,
+                            height: `${spotlight.size.height}px`,
+                            zIndex: spotlight.zIndex,
+                            transform,
+                            opacity: spotlightsReady ? 1 : 0,
+                            transition: `transform ${transitionDuration} ${transitionTimingFunction}, opacity 0.6s ease, top 0.8s cubic-bezier(0.16, 1, 0.3, 1), left 0.8s cubic-bezier(0.16, 1, 0.3, 1), right 0.8s cubic-bezier(0.16, 1, 0.3, 1), bottom 0.8s cubic-bezier(0.16, 1, 0.3, 1)`,
+                            transitionDelay,
+                          }}
+                        >
+                          <Image
+                            src={spotlight.image}
+                            alt={spotlight.alt}
+                            fill
+                            sizes="(min-width: 1024px) 320px, 100vw"
+                            className="object-cover"
+                            style={{ objectPosition: spotlight.objectPosition }}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/25 to-transparent mix-blend-multiply" />
+                          <div className="absolute inset-x-4 bottom-4 text-white drop-shadow-[0_6px_20px_rgba(13,15,20,0.35)]">
+                            <span className="inline-flex items-center rounded-full bg-white/20 px-3 py-1 font-inter text-[11px] font-medium uppercase tracking-[0.18em]">
+                              {spotlight.badge}
+                            </span>
+                            <p className="mt-3 font-inter text-[20px] font-semibold leading-tight">
+                              {spotlight.title}
+                            </p>
+                            <p className="mt-1 font-inter text-xs text-white/80">
+                              {spotlight.caption}
+                            </p>
                           </div>
-                        );
-                      })}
-                    </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
             </div>
+          </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Wrapper component with Suspense boundary for useSearchParams
+ */
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white" />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

@@ -3,7 +3,7 @@ import type { CreditPricing } from './credit-calculator';
 export const CREDIT_ACTIONS = {
   BASE_GENERATION: 'base_generation',
   AI_EDIT: 'ai_edit',
-  WATERMARK_REMOVAL: 'watermark_removal',
+  BACKGROUND_CHANGE: 'background_change',
 } as const;
 
 export type CreditActionSlug = typeof CREDIT_ACTIONS[keyof typeof CREDIT_ACTIONS];
@@ -42,8 +42,8 @@ export async function fetchCreditPricingOverrides(
         case CREDIT_ACTIONS.AI_EDIT:
           overrides.AI_EDIT = value;
           break;
-        case CREDIT_ACTIONS.WATERMARK_REMOVAL:
-          overrides.WATERMARK_REMOVAL = value;
+        case CREDIT_ACTIONS.BACKGROUND_CHANGE:
+          overrides.BACKGROUND_CHANGE = value;
           break;
         default:
           break;

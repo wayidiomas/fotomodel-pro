@@ -56,23 +56,31 @@ export interface ChatMessage {
       id: string;
       image_url: string;
       thumbnail_url?: string;
-      has_watermark: boolean;
     }>;
   };
 }
 
 export interface ChatAttachment {
-  type: 'garment' | 'background';
+  type: 'garment' | 'background' | 'model';
   referenceId?: string;
   url: string;
   base64Data?: string;
   mimeType?: string;
+  metadata?: {
+    name?: string;
+    gender?: string;
+    ageRange?: string;
+    heightCm?: number;
+    weightKg?: number;
+    [key: string]: any;
+  };
 }
 
 interface ChatInterfaceProps {
   userId: string;
   userCredits: number;
   initialConversations: Conversation[];
+  initialConversationId?: string | null;
   onCreditsChange?: (credits: number) => void;
 }
 
@@ -80,10 +88,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   userId,
   userCredits,
   initialConversations,
+  initialConversationId,
   onCreditsChange,
 }) => {
   const [conversations, setConversations] = React.useState<Conversation[]>(initialConversations);
-  const [currentConversationId, setCurrentConversationId] = React.useState<string | null>(null);
+  const [currentConversationId, setCurrentConversationId] = React.useState<string | null>(initialConversationId || null);
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(true);
@@ -94,6 +103,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [newConversationName, setNewConversationName] = React.useState('');
   const [newConversationProject, setNewConversationProject] = React.useState('');
   const [drafts, setDrafts] = React.useState<Record<string, DraftState>>({});
+  const [improveContext, setImproveContext] = React.useState<{
+    imageUrl: string;
+    generationId: string;
+  } | null>(null);
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -111,9 +124,31 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const persistDrafts = React.useCallback((nextDrafts: Record<string, DraftState>) => {
     if (typeof window === 'undefined') return;
     try {
-      window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextDrafts));
+      // Remove large data from attachments to avoid localStorage quota issues
+      const draftsToStore = Object.entries(nextDrafts).reduce((acc, [key, draft]) => {
+        acc[key] = {
+          message: draft.message,
+          attachments: draft.attachments
+            // Filter out background attachments as they're too large for localStorage
+            .filter((att) => att.type !== 'background')
+            .map((att) => {
+              // Remove base64Data but keep all other properties including URL
+              const { base64Data, ...attWithoutBase64 } = att;
+              return attWithoutBase64;
+            }),
+        };
+        return acc;
+      }, {} as Record<string, DraftState>);
+
+      window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftsToStore));
     } catch (error) {
       console.error('Erro ao salvar rascunhos do chat:', error);
+      // If still fails, try to clear old drafts
+      try {
+        window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+      } catch (e) {
+        // Ignore cleanup errors
+      }
     }
   }, []);
 
@@ -166,6 +201,31 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const conversationDraftKey = currentConversationId || '__new__';
   const currentDraft = drafts[conversationDraftKey] || { message: '', attachments: [] };
+
+  // Extract edit context from improve_reference attachment in draft
+  const editContext = React.useMemo(() => {
+    const improveRef = currentDraft.attachments.find(
+      (a: any) => a.type === 'improve_reference'
+    );
+    if (improveRef) {
+      return {
+        imageUrl: improveRef.url,
+        referenceId: improveRef.referenceId || '',
+      };
+    }
+    return null;
+  }, [currentDraft.attachments]);
+
+  // Clear edit context (remove improve_reference from draft)
+  const handleClearEditContext = React.useCallback(() => {
+    const filteredAttachments = currentDraft.attachments.filter(
+      (a: any) => a.type !== 'improve_reference'
+    );
+    updateDraft(conversationDraftKey, {
+      ...currentDraft,
+      attachments: filteredAttachments,
+    });
+  }, [currentDraft, conversationDraftKey, updateDraft]);
 
   const availableProjects = React.useMemo(() => {
     const projects = new Set<string>();
@@ -275,6 +335,34 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   };
 
+  const updateConversation = async (conversationId: string, title: string) => {
+    try {
+      const response = await fetch(`/api/chat/conversations/${conversationId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.conversation) {
+        // Update the conversation in the local state
+        setConversations((prev) =>
+          prev.map((conversation) =>
+            conversation.id === conversationId
+              ? { ...conversation, title: data.conversation.title, updated_at: data.conversation.updated_at }
+              : conversation
+          )
+        );
+      } else {
+        throw new Error(data.error || 'Erro ao atualizar título');
+      }
+    } catch (error) {
+      console.error('Error updating conversation:', error);
+      throw error; // Re-throw so the sidebar can handle it
+    }
+  };
+
   const handleSuggestionClick = async (prompt: string) => {
     // Create conversation if needed and send the suggested prompt
     let conversationId = currentConversationId;
@@ -314,6 +402,23 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   };
 
+  const handleImproveRequest = React.useCallback((imageUrl: string, generationId: string) => {
+    setImproveContext({ imageUrl, generationId });
+    // Update draft with improve attachment
+    updateDraft(conversationDraftKey, {
+      message: 'O que você gostaria de melhorar nesta imagem? ',
+      attachments: [{
+        type: 'improve_reference' as any,
+        url: imageUrl,
+        referenceId: generationId,
+        metadata: {
+          generationId,
+          imageUrl,
+        },
+      }],
+    });
+  }, [conversationDraftKey, updateDraft]);
+
   const sendMessage = async (
     content: string,
     attachments: ChatAttachment[] = []
@@ -332,14 +437,33 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setIsLoading(true);
 
     const hasGarmentAttachment = attachments.some((attachment) => attachment.type === 'garment');
+    const hasImproveReference = attachments.some((attachment) => (attachment as any).type === 'improve_reference');
+    // Check if conversation has previous generations (continuous improvement scenario)
+    const hasPreviousGeneration = messages.some((msg) => msg.generation_id);
+
+    // Show generation placeholder when:
+    // 1. User attached a garment (new generation)
+    // 2. OR user is using improve reference (clicked "Melhorar com IA")
+    // 3. OR conversation already has generations (continuous improvement via text)
+    const willGenerateImage = hasGarmentAttachment || hasImproveReference || hasPreviousGeneration;
+
     let placeholderId: string | null = null;
-    if (hasGarmentAttachment && (!currentConversationId || conversationId === currentConversationId)) {
+    if (willGenerateImage && (!currentConversationId || conversationId === currentConversationId)) {
       placeholderId = `pending-${Date.now()}`;
+
+      // Customize message based on context
+      let placeholderContent = 'Gerando sua imagem...';
+      if (hasGarmentAttachment) {
+        placeholderContent = 'Gerando a imagem com a peça enviada...';
+      } else if (hasImproveReference || hasPreviousGeneration) {
+        placeholderContent = 'Aplicando as alterações solicitadas...';
+      }
+
       const placeholderMessage: ChatMessage = {
         id: placeholderId,
         conversation_id: conversationId,
         role: 'assistant',
-        content: 'Gerando a imagem com a peça enviada...',
+        content: placeholderContent,
         credits_charged: 0,
         metadata: { placeholder: 'generation' },
         created_at: new Date().toISOString(),
@@ -368,6 +492,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         updateDraft(conversationId, { message: '', attachments: [] });
         updateDraft('__new__', { message: '', attachments: [] });
 
+        // Clear improve context after successful generation
+        setImproveContext(null);
+
         return true;
       } else {
         // Handle errors (insufficient credits, etc.)
@@ -392,7 +519,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   };
 
   return (
-    <div className="flex flex-1 overflow-hidden bg-transparent">
+    <div className="flex min-h-screen flex-1 bg-[#f5f4f0]">
       {/* Sidebar */}
       <ChatSidebar
         conversations={filteredConversations}
@@ -400,6 +527,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         onSelectConversation={setCurrentConversationId}
         onCreateConversation={handleOpenNewConversation}
         onDeleteConversation={deleteConversation}
+        onUpdateConversation={updateConversation}
         isOpen={isSidebarOpen}
         onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
         availableProjects={availableProjects}
@@ -408,7 +536,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       />
 
       {/* Main Chat Area */}
-      <div className="flex flex-1 flex-col m-3 md:m-6 rounded-[34px] border border-white/60 bg-white/65 shadow-[0_25px_60px_rgba(15,23,42,0.17)] backdrop-blur-2xl overflow-hidden">
+      <div
+        className="m-0 flex flex-1 flex-col rounded-none border-t border-[#e6e0d3]/70 bg-white/94 shadow-[0_16px_45px_rgba(15,23,42,0.12)] backdrop-blur-2xl md:ml-72"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 12% 18%, rgba(214,192,150,0.10), transparent 32%), radial-gradient(circle at 85% 10%, rgba(190,170,130,0.08), transparent 32%), radial-gradient(circle at 30% 75%, rgba(200,180,140,0.08), transparent 38%)',
+        }}
+      >
         {/* Error Message Banner */}
         {errorMessage && (
           <div className="border-b border-red-200/40 bg-white/70 backdrop-blur-md px-4 py-3 shadow-sm">
@@ -451,85 +585,26 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
         )}
 
-        {currentConversationId ? (
-          <>
-            {/* Messages */}
-            <MessageList messages={messages} isLoading={isLoading} userId={userId} />
+        {/* Messages */}
+        <MessageList
+          messages={messages}
+          isLoading={isLoading}
+          userId={userId}
+          onImproveRequest={handleImproveRequest}
+          editContext={editContext}
+          onClearEditContext={handleClearEditContext}
+        />
 
-            {/* Input */}
-            <MessageInput
-              conversationId={currentConversationId}
-              onSendMessage={sendMessage}
-              isLoading={isLoading}
-              userCredits={credits}
-              draft={currentDraft}
-              onDraftChange={(draft) => updateDraft(conversationDraftKey, draft)}
-            />
-          </>
-        ) : (
-          /* Empty State */
-          <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto p-8">
-            <div className="w-full max-w-3xl space-y-8 text-center">
-              <div className="rounded-[32px] bg-white/75 p-8 shadow-[0_20px_45px_rgba(15,23,42,0.12)] backdrop-blur-3xl border border-white/70">
-                <div className="mb-6 mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-[#20202a] to-[#2a2a35] shadow-lg">
-                  <svg
-                    className="h-10 w-10 text-white"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                    />
-                  </svg>
-                </div>
-                <h3 className="mb-2 font-inter text-2xl font-semibold text-gray-900">
-                  Chat - Geração Livre
-                </h3>
-                <p className="mb-6 mx-auto max-w-md font-inter text-sm text-gray-600">
-                  Converse com a IA para criar imagens de moda. Descreva o que você deseja e a IA
-                  irá guiá-lo com perguntas antes de gerar.
-                </p>
-                <button
-                  onClick={handleOpenNewConversation}
-                  className="rounded-full bg-[#20202a] px-6 py-3 font-inter text-sm font-medium text-white transition-transform hover:scale-[1.01]"
-                >
-                  Iniciar nova conversa
-                </button>
-              </div>
-
-              {/* Prompt Suggestions */}
-              <div className="text-left">
-                <PromptSuggestions onSelectSuggestion={handleSuggestionClick} />
-              </div>
-
-              {/* Info Cards */}
-              <div className="grid max-w-2xl mx-auto grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-white/50 bg-white/70 p-4 backdrop-blur-xl shadow">
-                  <div className="flex items-center gap-2 text-[#20202a]">
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 8h16M4 12h10M4 16h6" />
-                    </svg>
-                    <p className="font-inter text-sm font-semibold">Conversação: Gratuito</p>
-                  </div>
-                  <p className="mt-2 font-inter text-xs text-gray-600">Perguntas e respostas são grátis</p>
-                </div>
-                <div className="rounded-2xl border border-white/50 bg-white/70 p-4 backdrop-blur-xl shadow">
-                  <div className="flex items-center gap-2 text-[#20202a]">
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v8m4-8v8m4-8v8M4 8v8m4-8v8" />
-                    </svg>
-                    <p className="font-inter text-sm font-semibold">Geração: 2 créditos</p>
-                  </div>
-                  <p className="mt-2 font-inter text-xs text-gray-600">Refinamentos custam 1 crédito</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Input */}
+        <MessageInput
+          conversationId={currentConversationId}
+          onSendMessage={sendMessage}
+          isLoading={isLoading}
+          userCredits={credits}
+          draft={currentDraft}
+          onDraftChange={(draft) => updateDraft(conversationDraftKey, draft)}
+          isNewConversation={messages.length === 0}
+        />
       </div>
 
       {showNewConversationModal && (
@@ -537,7 +612,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           <div className="w-full max-w-md rounded-3xl border border-white/50 bg-white/90 p-6 shadow-2xl backdrop-blur-2xl">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-inter text-lg font-semibold text-gray-900">Nova conversa</h3>
+                <h3 className="font-freight text-xl font-medium text-gray-900">Nova conversa</h3>
                 <p className="font-inter text-sm text-gray-600">
                   Defina um nome e, se quiser, associe a um projeto.
                 </p>

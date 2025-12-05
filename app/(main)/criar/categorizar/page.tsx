@@ -63,15 +63,15 @@ export default async function CategorizationPage({ searchParams }: Categorizatio
       .single();
     credits = userData?.credits ?? 0;
 
-    const { data: collectionData } = await supabase
-      .from('wardrobe_collections')
+    const { data: collectionData } = await (supabase
+      .from('wardrobe_collections') as any)
       .select('id, name, icon_color, item_count')
       .eq('user_id', user.id)
       .eq('is_deleted', false)
       .order('created_at', { ascending: false });
 
     wardrobeCollections =
-      collectionData?.map<WardrobeCollectionSummary>((collection) => ({
+      collectionData?.map((collection: any) => ({
         id: collection.id,
         name: collection.name,
         iconColor: collection.icon_color,
@@ -80,7 +80,7 @@ export default async function CategorizationPage({ searchParams }: Categorizatio
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-[#fdfbf7] via-[#fff] to-[#f7f4ef]">
       <MainHeader currentPage="criar" credits={credits} />
 
       {/* Client Component */}

@@ -12,7 +12,13 @@ import { ChatShell } from '@/components/chat';
  * - Custo: 0 créditos (conversação), 2 créditos (geração), 1 crédito (refinamento)
  */
 
-export default async function ChatPage() {
+export default async function ChatPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ conversationId?: string }>;
+}) {
+  const params = await searchParams;
+  const initialConversationId = params.conversationId || null;
   const supabase = await createClient();
 
   // Get current user
@@ -45,6 +51,7 @@ export default async function ChatPage() {
       userId={user.id}
       initialCredits={userData?.credits || 0}
       initialConversations={conversations || []}
+      initialConversationId={initialConversationId}
     />
   );
 }

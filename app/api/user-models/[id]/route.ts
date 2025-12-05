@@ -3,9 +3,10 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -16,7 +17,7 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 });
     }
 
-    const modelId = params.id;
+    const modelId = id;
 
     // Verify model belongs to user
     const { data: model, error: fetchError } = await (supabase

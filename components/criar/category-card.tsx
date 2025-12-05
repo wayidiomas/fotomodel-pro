@@ -198,7 +198,7 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
         {/* Conteúdo - padding reduzido conforme Figma */}
         <div className="px-6 pt-2 pb-6 flex flex-col">
           {/* Título */}
-          <h3 className="font-inter font-semibold text-[22px] leading-[32px] tracking-[-0.45px] text-[#020817] mb-2">
+          <h3 className="font-freight font-medium text-2xl leading-[32px] tracking-[-0.45px] text-[#020817] mb-2">
             {title}
           </h3>
 

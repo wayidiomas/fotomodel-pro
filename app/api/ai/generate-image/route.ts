@@ -33,14 +33,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { virtualTryOn, editImage, blendImages } from '@/lib/ai/gemini';
 import { createVirtualTryOnPrompt, createBackgroundRemovalPrompt, createBackgroundChangePrompt, createHairColorChangePrompt, createLogoInsertionPrompt } from '@/lib/ai/gemini-prompts';
-import { optimizePrompt, buildPromptOptimizerInput, buildGarmentPlacementHint, PROMPT_OPTIMIZER_MODEL_ID } from '@/lib/ai/prompt-optimizer';
+import { optimizePrompt, buildPromptOptimizerInput, buildImageEditOptimizerInput, buildGarmentPlacementHint, PROMPT_OPTIMIZER_MODEL_ID } from '@/lib/ai/prompt-optimizer';
 import { calculateGenerationCredits, resolveCreditPricing } from '@/lib/credits/credit-calculator';
 import { fetchCreditPricingOverrides, CREDIT_ACTIONS } from '@/lib/credits/credit-pricing';
-import { addWatermark, createThumbnail, base64ToBuffer } from '@/lib/images/watermark';
+import { createThumbnail, base64ToBuffer } from '@/lib/images/watermark';
 import { uploadGeneratedImage, uploadThumbnail } from '@/lib/storage/upload';
 import { GEMINI_ASPECT_RATIOS } from '@/lib/generation-flow/image-formats';
 import type { CustomizationData } from '@/lib/generation-flow/useCustomization';
 import { assessGarmentPoseCompatibility } from '@/lib/ai/pose-advisor';
+import { describePose, type PoseDescription } from '@/lib/ai/pose-describer';
 
 function getServiceRoleClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -97,6 +98,103 @@ interface BackgroundSelectionPayload {
   aiPreviewUrl?: string;
 }
 
+/**
+ * Map body size (P, M, G, Plus Size) to approximate weight in kg
+ * Height is kept at a reasonable default based on age
+ */
+function getWeightFromBodySize(bodySize?: string, gender?: string): number {
+  const isMale = gender === 'MALE';
+
+  switch (bodySize) {
+    case 'P':
+      return isMale ? 58 : 52;
+    case 'M':
+      return isMale ? 70 : 62;
+    case 'G':
+      return isMale ? 85 : 75;
+    case 'plus-size':
+      return isMale ? 105 : 95;
+    default:
+      return isMale ? 70 : 62; // Default to M
+  }
+}
+
+/**
+ * Get reasonable height based on age range and gender
+ */
+function getHeightFromAge(ageRange?: string, gender?: string): number {
+  const isMale = gender === 'MALE';
+
+  switch (ageRange) {
+    case '0-2':
+      return 75; // Baby/toddler (average ~75cm)
+    case '2-10':
+      return 120; // Child
+    case '10-15':
+      return 150; // Pre-teen
+    case '15-20':
+      return isMale ? 172 : 162;
+    default:
+      return isMale ? 178 : 168; // Adult default
+  }
+}
+
+/**
+ * Check if the age range represents a minor (under 18)
+ * For minors, we use simplified prompts to avoid content safety blocks
+ */
+function isMinorAge(ageRange?: string, ageMin?: number | null): boolean {
+  if (ageMin !== null && ageMin !== undefined && ageMin < 18) {
+    return true;
+  }
+
+  if (!ageRange) return false;
+
+  // Check common age range patterns
+  const minorRanges = ['0-2', '2-10', '10-15', '15-20'];
+  if (minorRanges.includes(ageRange)) return true;
+
+  // Parse age range like "0-2" or "15-20"
+  const match = ageRange.match(/^(\d+)-(\d+)$/);
+  if (match) {
+    const minAge = parseInt(match[1]);
+    return minAge < 18;
+  }
+
+  return false;
+}
+
+/**
+ * Create simplified prompt for minors to avoid content safety blocks
+ * Uses minimal description and focuses on direct garment placement
+ */
+function buildSimplifiedMinorPrompt(params: {
+  garmentType: 'single' | 'outfit';
+  aspectRatio: string;
+  outputWidth: number;
+  outputHeight: number;
+  backgroundType?: 'original' | 'preset' | 'custom' | 'neutral';
+}): string {
+  const { garmentType, aspectRatio, outputWidth, outputHeight, backgroundType } = params;
+
+  // Very simple, direct prompt without detailed descriptions
+  let prompt = `Generate a virtual try-on image showing the ${garmentType === 'outfit' ? 'outfit pieces' : 'garment'} on the model in the reference pose. `;
+
+  // Background instruction
+  if (backgroundType === 'original') {
+    prompt += `Keep the original garment background. `;
+  } else if (backgroundType === 'preset' || backgroundType === 'custom') {
+    prompt += `Use the provided background reference. `;
+  } else {
+    prompt += `Use a clean, neutral studio background. `;
+  }
+
+  // Format and quality
+  prompt += `Output dimensions: ${outputWidth}×${outputHeight}px (${aspectRatio}). Natural lighting, professional quality.`;
+
+  return prompt;
+}
+
 async function resolveBackgroundReference(
   supabase: ReturnType<typeof getServiceRoleClient>,
   selection: BackgroundSelectionPayload | null | undefined
@@ -143,9 +241,7 @@ async function resolveBackgroundReference(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { uploadIds, regenerationType } = body;
-    // Watermark disabled - always skip
-    const skipWatermark = true;
+    const { uploadIds, regenerationType, improvementText } = body;
 
     // Validate inputs
     if (!uploadIds || !Array.isArray(uploadIds) || uploadIds.length === 0) {
@@ -326,14 +422,24 @@ export async function POST(request: NextRequest) {
       console.error('Error loading customization:', customizationError);
     }
 
+    // Load selected format from generation_format_selections
+    const { data: formatSelection } = await (supabase
+      .from('generation_format_selections') as any)
+      .select('format_preset_id')
+      .eq('upload_id', uploadIds[0])
+      .single();
+
+    const selectedFormatId = formatSelection?.format_preset_id || null;
+
     // Build customization object
     const customization: CustomizationData = customizationData
       ? {
+          modelCharacteristics: (customizationData.metadata as any)?.model_characteristics || {},
           height: customizationData.model_height_cm || 170,
           weight: customizationData.model_weight_kg || 60,
           facialExpression: customizationData.facial_expression,
           hairColor: (customizationData.metadata as any)?.hair_color || null,
-          selectedFormat: null, // Will be loaded separately from generation_format_selections
+          selectedFormat: selectedFormatId,
           aiTools: (customizationData.metadata as any)?.ai_tools || {
             removeBackground: false,
             changeBackground: { enabled: false, selection: null },
@@ -342,11 +448,12 @@ export async function POST(request: NextRequest) {
           uploadIds,
         }
       : {
+          modelCharacteristics: {},
           height: 170,
           weight: 60,
           facialExpression: null,
           hairColor: null,
-          selectedFormat: null,
+          selectedFormat: selectedFormatId,
           aiTools: {
             removeBackground: false,
             changeBackground: { enabled: false, selection: null },
@@ -432,16 +539,29 @@ export async function POST(request: NextRequest) {
       // ====================================
       // 7. Fetch Images as Base64
       // ====================================
-      // Get garment image (assuming first upload is the garment)
-      const garmentPublicUrl = (firstUpload.metadata as any)?.publicUrl;
-      if (!garmentPublicUrl) {
-        throw new Error('Garment image URL not found');
+      // Get ALL garment images (support for outfits with 2+ pieces)
+      // For Bubble uploads, file_path is already a complete URL
+      // For Supabase uploads, use metadata.publicUrl
+      const garmentBase64Array: string[] = [];
+      const garmentMimeTypesArray: string[] = [];
+
+      for (const upload of uploads) {
+        const publicUrl = (upload.metadata as any)?.publicUrl || upload.file_path;
+        if (!publicUrl) {
+          throw new Error(`Garment image URL not found for upload ${upload.id}`);
+        }
+        const imageData = await fetchImageAsBase64(publicUrl);
+        garmentBase64Array.push(imageData.data);
+        garmentMimeTypesArray.push(imageData.mimeType);
       }
 
-      const garmentBase64Data = await fetchImageAsBase64(garmentPublicUrl);
       const poseBase64Data = await fetchImageAsBase64(poseData.image_url);
-      const garmentBase64 = garmentBase64Data.data;
       const poseBase64 = poseBase64Data.data;
+
+      // For backward compatibility with single garment
+      const garmentBase64 = garmentBase64Array[0];
+
+      console.log(`[generate-image] Loaded ${garmentBase64Array.length} garment image(s)`);
 
       // ====================================
       // 8. Optimize Prompt with Gemini 2.0 Flash
@@ -458,7 +578,7 @@ export async function POST(request: NextRequest) {
       if (customization.selectedFormat) {
         const { data: formatData } = await supabase
           .from('image_format_presets')
-          .select('gemini_aspect_ratio, width, height, aspect_ratio')
+          .select('gemini_aspect_ratio, width, height, aspect_ratio, name')
           .eq('id', customization.selectedFormat)
           .single();
 
@@ -468,8 +588,11 @@ export async function POST(request: NextRequest) {
             outputWidth = dimensions.width;
             outputHeight = dimensions.height;
             aspectRatio = formatData.gemini_aspect_ratio;
+            console.log(`[generate-image] Using selected format: ${formatData.name} (${aspectRatio})`);
           }
         }
+      } else {
+        console.log(`[generate-image] No format selected, using default: ${aspectRatio}`);
       }
 
       const primaryPieceType: 'upper' | 'lower' | undefined =
@@ -505,39 +628,118 @@ export async function POST(request: NextRequest) {
               : 'original garment background'
         : undefined;
 
-      // Build optimizer input
-      const optimizerInput = buildPromptOptimizerInput({
-        garmentType: uploads.length > 1 ? 'outfit' : 'single',
-        garmentCategory: garmentMetadata.category || 'clothing',
-        garmentDescription: garmentMetadata.description,
-        gender: poseMetadata.gender || 'FEMALE',
-        poseCategory: poseMetadata.poseCategory || poseData.pose_category || 'standing',
-        poseReferenceDescription: poseMetadata.description || poseMetadata.reference || poseMetadata.poseDescription,
-        ageRange: poseMetadata.ageRange,
-        modelHeight: customization.height,
-        modelWeight: customization.weight,
-        facialExpression: customization.facialExpression || undefined,
-        hairColor: customization.hairColor || undefined,
-        aspectRatio,
-        outputWidth,
-        outputHeight,
-        garmentPlacementHint,
-        background: wantsCustomBackground
-          ? {
-              enabled: true,
-              type: backgroundSelection.type === 'preset' ? 'preset' : 'custom',
-              description: backgroundDescription || '',
-            }
-          : keepOriginalBackground
-            ? {
-                enabled: true,
-                type: 'original',
-                description:
-                  backgroundDescription ||
-                  'Preserve the original background and environment from the garment reference photo.',
-              }
-            : undefined,
-      });
+      // Determine if we should use integrated background (3rd image) approach
+      // This produces better results with natural lighting and shadows
+      const useIntegratedBackground = !!(
+        wantsCustomBackground &&
+        backgroundReferenceImage &&
+        backgroundSelection?.type !== 'ai' // AI backgrounds are text descriptions, not images
+      );
+
+      console.log(`[generate-image] Background approach: ${useIntegratedBackground ? 'integrated (3 images)' : wantsCustomBackground ? 'post-processing' : 'neutral'}`);
+
+      // Determine gender from user selection or pose metadata
+      // Priority: 1. User-selected modelCharacteristics.gender, 2. Pose metadata, 3. Default
+      const modelGender: 'MALE' | 'FEMALE' | 'UNISEX' =
+        customization.modelCharacteristics?.gender ||
+        poseMetadata.gender ||
+        'FEMALE';
+
+      // Determine age range from user selection or pose metadata
+      const modelAgeRange: string | undefined =
+        customization.modelCharacteristics?.ageRange ||
+        poseMetadata.ageRange;
+
+      // Check if model is a minor (under 18) - use simplified prompt to avoid content safety blocks
+      const poseAgeMin = poseData.age_min ?? poseMetadata.ageMin ?? null;
+      const isMinor = isMinorAge(modelAgeRange, poseAgeMin);
+
+      console.log(`[generate-image] Model profile: gender=${modelGender}, ageRange=${modelAgeRange}, bodySize=${customization.modelCharacteristics?.bodySize || 'not set'}, isMinor=${isMinor}`);
+
+      // Derive height/weight from body size and age (sliders removed from UI)
+      const derivedHeight = getHeightFromAge(modelAgeRange, modelGender);
+      const derivedWeight = getWeightFromBodySize(customization.modelCharacteristics?.bodySize, modelGender);
+
+      // ====================================
+      // 8.1. Generate Dynamic Pose Description with AI
+      // ====================================
+      let dynamicPoseDescription: PoseDescription | null = null;
+      try {
+        dynamicPoseDescription = await describePose({
+          poseImageData: poseBase64,
+          poseCategory: poseData.pose_category,
+          gender: modelGender,
+        });
+        if (dynamicPoseDescription) {
+          console.log(`[generate-image] Dynamic pose description: ${dynamicPoseDescription.description.substring(0, 100)}...`);
+        }
+      } catch (poseDescError) {
+        console.warn('[generate-image] Pose description failed, using fallback:', poseDescError);
+      }
+
+      // Use dynamic AI description or fallback to database metadata
+      const poseReferenceDescription = dynamicPoseDescription?.description
+        || poseMetadata.description
+        || poseMetadata.reference
+        || poseMetadata.poseDescription;
+
+      // Build optimizer input - use IMAGE EDIT mode when improvement text is provided
+      const isImprovementRequest = !!improvementText && improvementText.trim().length > 0;
+
+      const optimizerInput = isImprovementRequest
+        ? buildImageEditOptimizerInput({
+            editInstruction: improvementText.trim(),
+            gender: modelGender === 'UNISEX' ? 'FEMALE' : modelGender,
+            currentGarmentDescription: garmentMetadata.description,
+            aspectRatio,
+            outputWidth,
+            outputHeight,
+            // Include /criar-specific model characteristics for better preservation
+            facialExpression: customization.facialExpression || undefined,
+            hairColor: customization.hairColor || undefined,
+            ageRange: modelAgeRange,
+            bodySize: customization.modelCharacteristics?.bodySize,
+            modelHeight: derivedHeight,
+            modelWeight: derivedWeight,
+          })
+        : buildPromptOptimizerInput({
+            garmentType: uploads.length > 1 ? 'outfit' : 'single',
+            garmentCategory: garmentMetadata.category || 'clothing',
+            garmentDescription: garmentMetadata.description,
+            gender: modelGender,
+            poseCategory: poseMetadata.poseCategory || poseData.pose_category || 'standing',
+            poseReferenceDescription,
+            ageRange: modelAgeRange,
+            bodySize: customization.modelCharacteristics?.bodySize,
+            modelHeight: derivedHeight,
+            modelWeight: derivedWeight,
+            facialExpression: customization.facialExpression || undefined,
+            hairColor: customization.hairColor || undefined,
+            aspectRatio,
+            outputWidth,
+            outputHeight,
+            garmentPlacementHint,
+            background: wantsCustomBackground
+              ? {
+                  enabled: true,
+                  type: backgroundSelection.type === 'preset' ? 'preset' : 'custom',
+                  description: backgroundDescription || '',
+                  hasReferenceImage: useIntegratedBackground,
+                }
+              : keepOriginalBackground
+                ? {
+                    enabled: true,
+                    type: 'original',
+                    description:
+                      backgroundDescription ||
+                      'Preserve the original background and environment from the garment reference photo.',
+                  }
+                : undefined,
+          });
+
+      if (isImprovementRequest) {
+        console.log(`[generate-image] Using IMAGE EDIT mode for improvement: "${improvementText.trim().substring(0, 50)}..."`);
+      }
 
       let poseAssessment = null;
       try {
@@ -546,80 +748,161 @@ export async function POST(request: NextRequest) {
           poseImageData: poseBase64,
           garmentCategory: garmentMetadata.category,
           pieceType: primaryPieceType,
-          poseDescription: poseMetadata.description || poseMetadata.poseDescription,
+          poseDescription: poseReferenceDescription,
         });
       } catch (advisorError) {
         console.error('Pose advisor failed:', advisorError);
       }
 
-      // Call Gemini 2.0 Flash to optimize prompt
-      const optimizerResult = await optimizePrompt(optimizerInput);
+      // ====================================
+      // 8.2. Generate Prompt (Simplified for Minors, Full Optimization for Adults)
+      // ====================================
+      // For minors, use simplified direct prompt to avoid content safety blocks
+      // For adults, use full AI-optimized prompt with detailed descriptions
+      let finalPrompt: string;
+      let optimizerResult: any = null;
 
-      if (!optimizerResult.success || !optimizerResult.prompt) {
-        // Prompt optimization failed - ask user to retry (credits not yet debited)
-        console.error('Prompt optimization failed:', optimizerResult.error);
+      if (isMinor) {
+        // MINOR FLOW: Use simplified prompt without AI optimization
+        console.log('[generate-image] Using SIMPLIFIED MINOR FLOW - skipping prompt optimizer to avoid content safety blocks');
 
+        const backgroundType = wantsCustomBackground
+          ? (backgroundSelection?.type === 'original' ? 'original' : useIntegratedBackground ? 'preset' : 'neutral')
+          : 'neutral';
+
+        finalPrompt = buildSimplifiedMinorPrompt({
+          garmentType: uploads.length > 1 ? 'outfit' : 'single',
+          aspectRatio,
+          outputWidth,
+          outputHeight,
+          backgroundType,
+        });
+
+        console.log('[generate-image] Simplified minor prompt:', finalPrompt);
+
+        // Save simplified prompt to database for auditing
         await supabase
-          .from('generations')
-          .update({
-            status: 'failed',
-            error_message: `Prompt optimization failed: ${optimizerResult.error}. Please try again.`,
-          })
-          .eq('id', generation.id);
+          .from('ai_generated_prompts')
+          .insert({
+            generation_id: generation.id,
+            input_data: { simplified_flow: true, minor_detection: true, ageRange: modelAgeRange },
+            generated_prompt: finalPrompt,
+            prompt_optimizer_model: 'simplified-minor-flow',
+            tokens_used: null,
+            metadata: { isMinor: true, ageRange: modelAgeRange },
+          });
 
-        // No need to refund credits - they haven't been debited yet
-        // (Credits are only debited at the end on success)
-
-        return NextResponse.json(
-          {
-            error: 'Failed to optimize prompt. Please try generating again.',
-            details: optimizerResult.error,
+        // Create mock optimizerResult for consistency
+        optimizerResult = {
+          success: true,
+          prompt: finalPrompt,
+          tokensUsed: 0,
+          metadata: {
+            model: 'simplified-minor-flow',
+            processingTime: 0,
+            isMinor: true,
+            ageRange: modelAgeRange,
           },
-          { status: 500 }
-        );
-      }
+        };
+      } else {
+        // ADULT FLOW: Use full AI prompt optimization
+        console.log('[generate-image] Using STANDARD ADULT FLOW - calling prompt optimizer');
 
-      // Save generated prompt to database for auditing
-      const { error: promptSaveError } = await supabase
-        .from('ai_generated_prompts')
-        .insert({
-          generation_id: generation.id,
-          input_data: optimizerInput,
-          generated_prompt: optimizerResult.prompt,
-          prompt_optimizer_model: optimizerResult.metadata?.model || PROMPT_OPTIMIZER_MODEL_ID,
+        optimizerResult = await optimizePrompt(optimizerInput);
+
+        if (!optimizerResult.success || !optimizerResult.prompt) {
+          // Prompt optimization failed - ask user to retry (credits not yet debited)
+          const errorStr = (optimizerResult.error || '').toLowerCase();
+          const isProhibitedContent = errorStr.includes('prohibited_content') ||
+            errorStr.includes('prohibited content') ||
+            errorStr.includes('safety');
+
+          // Don't log full error details for content safety (avoid confusion)
+          if (isProhibitedContent) {
+            console.warn('[generate-image] Prompt optimization blocked by content safety - user can retry');
+          } else {
+            console.error('[generate-image] Prompt optimization failed:', optimizerResult.error);
+          }
+
+          let userMessage = 'Erro ao processar a geração. Por favor, tente novamente.';
+          let errorDetails = 'Processing error';
+
+          if (isProhibitedContent) {
+            // Generic message - don't expose technical details
+            userMessage = 'Não foi possível processar esta geração no momento. Por favor, tente novamente.';
+            errorDetails = 'Content processing restriction';
+          }
+
+          await supabase
+            .from('generations')
+            .update({
+              status: 'failed',
+              error_message: errorDetails,
+            })
+            .eq('id', generation.id);
+
+          return NextResponse.json(
+            {
+              error: userMessage,
+              retryable: true,
+            },
+            { status: 500 }
+          );
+        }
+
+        // Save generated prompt to database for auditing
+        const { error: promptSaveError } = await supabase
+          .from('ai_generated_prompts')
+          .insert({
+            generation_id: generation.id,
+            input_data: optimizerInput,
+            generated_prompt: optimizerResult.prompt,
+            prompt_optimizer_model: optimizerResult.metadata?.model || PROMPT_OPTIMIZER_MODEL_ID,
             tokens_used: optimizerResult.tokensUsed || null,
             metadata: optimizerResult.metadata || {},
           });
 
-      if (promptSaveError) {
-        console.error('Error saving generated prompt:', promptSaveError);
-        // Continue anyway - this is not critical
-      }
+        if (promptSaveError) {
+          console.error('Error saving generated prompt:', promptSaveError);
+          // Continue anyway - this is not critical
+        }
 
-      // Use the optimized prompt
-      let poseGuidance =
-        'Siga exatamente a pose de referência fornecida, incluindo orientação do tronco, membros e distribuição de peso.';
-      if (poseAssessment) {
-        poseGuidance = poseAssessment.recommendPoseAdjustment
-          ? `O assistente detectou compatibilidade moderada (${poseAssessment.score}/100). ${poseAssessment.guidance}`
-          : `Compatibilidade alta (${poseAssessment.score}/100). ${poseAssessment.guidance}`;
-      }
+        // Use the optimized prompt with pose guidance
+        let poseGuidance =
+          'Siga exatamente a pose de referência fornecida, incluindo orientação do tronco, membros e distribuição de peso.';
+        if (poseAssessment) {
+          poseGuidance = poseAssessment.recommendPoseAdjustment
+            ? `O assistente detectou compatibilidade moderada (${poseAssessment.score}/100). ${poseAssessment.guidance}`
+            : `Compatibilidade alta (${poseAssessment.score}/100). ${poseAssessment.guidance}`;
+        }
 
-      const tryOnPrompt = `${optimizerResult.prompt}
+        finalPrompt = `${optimizerResult.prompt}
 
 ${poseGuidance}
 Ensure realistic human proportions with a natural head-to-body ratio, keeping limbs and torso proportional to a real human reference.`;
+      }
+
+      const tryOnPrompt = finalPrompt;
 
       // ====================================
       // 9. Generate Virtual Try-On Image (with retry)
       // ====================================
+      // When using integrated background, pass it as 3rd reference image
+      // This produces better lighting and shadow integration
       const generateTryOn = async (attempts = 2) => {
         let lastResult: Awaited<ReturnType<typeof virtualTryOn>> | null = null;
         for (let attempt = 1; attempt <= attempts; attempt++) {
           const result = await virtualTryOn({
             prompt: tryOnPrompt,
-            garmentImageData: garmentBase64,
+            garmentImageData: garmentBase64Array, // Pass ALL garment images for outfits
             poseImageData: poseBase64,
+            garmentMimeType: garmentMimeTypesArray, // Pass matching mime types
+            // Include background as 3rd reference image for integrated generation
+            backgroundImageData: useIntegratedBackground ? backgroundReferenceImage!.data : undefined,
+            backgroundMimeType: useIntegratedBackground ? backgroundReferenceImage!.mimeType : undefined,
+            backgroundDescription: useIntegratedBackground ? backgroundDescription : undefined,
+            // Pass aspect ratio from format selection (default 3:4)
+            aspectRatio: aspectRatio as any,
           });
           if (result.success && result.imageData) {
             return result;
@@ -689,16 +972,22 @@ Ensure realistic human proportions with a natural head-to-body ratio, keeping li
       }
 
       // ====================================
-      // 11. Apply Background Change (Separate Step)
+      // 11. Apply Background Change (Separate Step - only if not using integrated approach)
       // ====================================
-      // Background changes are now applied as a separate step AFTER initial generation
-      // This ensures better quality and respects the garment-first approach
-      if (
+      // When using integrated background (3 images), background is already applied in virtualTryOn
+      // Otherwise, apply background as a separate post-processing step
+      if (useIntegratedBackground) {
+        // Background was already integrated in virtualTryOn - just mark as applied
+        aiEditsApplied.push('change_background');
+        console.log('[generate-image] Background integrated in initial generation (3 images)');
+      } else if (
         wantsCustomBackground &&
         !customization.aiTools.removeBackground &&
         backgroundSelection
       ) {
+        // Fallback: Apply background as post-processing step
         const backgroundDesc = backgroundDescription || 'custom background';
+        console.log('[generate-image] Applying background as post-processing step');
 
         if (backgroundReferenceImage) {
           const blendResult = await blendImages({
@@ -730,21 +1019,14 @@ Ensure realistic human proportions with a natural head-to-body ratio, keeping li
       }
 
       // ====================================
-      // 12. Add Watermark (unless regeneration/improvement)
+      // 12. Prepare Image Buffer
       // ====================================
-      const cleanImageData = currentImageData;
-      const imageBuffer = base64ToBuffer(cleanImageData);
-      const watermarkedBuffer = skipWatermark
-        ? imageBuffer
-        : await addWatermark(imageBuffer, {
-            opacity: 0.3,
-            position: 'center',
-          });
+      const imageBuffer = base64ToBuffer(currentImageData);
 
       // ====================================
       // 13. Create Thumbnail
       // ====================================
-      const thumbnailBuffer = await createThumbnail(watermarkedBuffer, 300, 400, false);
+      const thumbnailBuffer = await createThumbnail(imageBuffer, 300, 400);
 
       // ====================================
       // 14. Upload to Storage
@@ -752,7 +1034,7 @@ Ensure realistic human proportions with a natural head-to-body ratio, keeping li
       const uploadResult = await uploadGeneratedImage(
         user.id,
         generation.id,
-        watermarkedBuffer,
+        imageBuffer,
         'image/png'
       );
 
@@ -776,19 +1058,15 @@ Ensure realistic human proportions with a natural head-to-body ratio, keeping li
           generation_id: generation.id,
           image_url: uploadResult.path!,
           thumbnail_url: thumbnailResult.path || null,
-          has_watermark: !skipWatermark,
-          is_purchased: false,
+          has_watermark: false,
+          is_purchased: true,
           metadata: {
             tokensUsed: tryOnResult.tokensUsed,
             promptTokensUsed: optimizerResult.tokensUsed,
             mimeType: currentMimeType,
             aiEditsApplied,
             optimizedPrompt: optimizerResult.prompt,
-            cleanImageData,
-            cleanMimeType: currentMimeType,
-            purchasedPath: null,
             poseAssessment,
-            skipWatermark,
             regenerationType: regenerationType || null,
           },
         });
@@ -855,7 +1133,7 @@ Ensure realistic human proportions with a natural head-to-body ratio, keeping li
         .insert({
           user_id: user.id,
           amount: -totalCredits,
-          type: 'generation',
+          transaction_type: 'generation',
           description: `Geração de imagem virtual try-on com ${uploadIds.length} peça(s)`,
           metadata: {
             generation_id: generation.id,
@@ -863,8 +1141,9 @@ Ensure realistic human proportions with a natural head-to-body ratio, keeping li
             upload_ids: uploadIds,
             credits_breakdown: creditBreakdown,
             customization: {
-              height_cm: customization.height,
-              weight_kg: customization.weight,
+              height_cm: getHeightFromAge(customization.modelCharacteristics?.ageRange, customization.modelCharacteristics?.gender),
+              weight_kg: getWeightFromBodySize(customization.modelCharacteristics?.bodySize, customization.modelCharacteristics?.gender),
+              body_size: customization.modelCharacteristics?.bodySize,
               facial_expression: customization.facialExpression,
               hair_color: customization.hairColor,
               ai_tools_applied: aiEditsApplied,

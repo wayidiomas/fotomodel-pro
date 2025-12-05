@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { Portal } from '@/components/ui/portal';
 import type { Conversation } from './chat-interface';
 
 interface ChatSidebarProps {
@@ -10,6 +11,7 @@ interface ChatSidebarProps {
   onSelectConversation: (id: string) => void;
   onCreateConversation: () => void;
   onDeleteConversation: (id: string) => void;
+  onUpdateConversation: (id: string, title: string) => Promise<void>;
   isOpen: boolean;
   onToggle: () => void;
   availableProjects: string[];
@@ -23,6 +25,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onSelectConversation,
   onCreateConversation,
   onDeleteConversation,
+  onUpdateConversation,
   isOpen,
   onToggle,
   availableProjects,
@@ -30,14 +33,74 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onProjectFilterChange,
 }) => {
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = React.useState('');
+  const editInputRef = React.useRef<HTMLInputElement>(null);
 
-  const handleDelete = async (e: React.MouseEvent, conversationId: string) => {
+  // Delete confirmation modal state
+  const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null);
+
+  // Focus input when editing starts
+  React.useEffect(() => {
+    if (editingId && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingId]);
+
+  const handleDeleteClick = (e: React.MouseEvent, conversationId: string) => {
     e.stopPropagation();
+    setPendingDeleteId(conversationId);
+    setShowDeleteConfirm(true);
+  };
 
-    if (window.confirm('Tem certeza que deseja deletar esta conversa?')) {
-      setDeletingId(conversationId);
-      await onDeleteConversation(conversationId);
-      setDeletingId(null);
+  const handleConfirmDelete = async () => {
+    if (!pendingDeleteId) return;
+
+    setShowDeleteConfirm(false);
+    setDeletingId(pendingDeleteId);
+    await onDeleteConversation(pendingDeleteId);
+    setDeletingId(null);
+    setPendingDeleteId(null);
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteConfirm(false);
+    setPendingDeleteId(null);
+  };
+
+  const handleStartEdit = (e: React.MouseEvent, conversationId: string, currentTitle: string) => {
+    e.stopPropagation();
+    setEditingId(conversationId);
+    setEditingTitle(currentTitle || 'Sem título');
+  };
+
+  const handleSaveEdit = async (conversationId: string) => {
+    if (!editingTitle.trim()) {
+      setEditingTitle('Sem título');
+    }
+
+    try {
+      await onUpdateConversation(conversationId, editingTitle.trim() || 'Sem título');
+      setEditingId(null);
+      setEditingTitle('');
+    } catch (error) {
+      console.error('Error updating conversation title:', error);
+      alert('Erro ao atualizar título. Tente novamente.');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditingTitle('');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, conversationId: string) => {
+    if (e.key === 'Enter') {
+      handleSaveEdit(conversationId);
+    } else if (e.key === 'Escape') {
+      handleCancelEdit();
     }
   };
 
@@ -69,7 +132,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       {/* Toggle Button (mobile) */}
       <button
         onClick={onToggle}
-        className="fixed left-4 top-20 z-50 flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-lg md:hidden"
+        className="fixed left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-lg md:hidden"
       >
         <svg
           className="h-5 w-5 text-gray-600"
@@ -89,14 +152,14 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       {/* Sidebar */}
       <div
         className={cn(
-          'flex w-80 flex-col border-r border-white/30 bg-white/70 backdrop-blur-2xl shadow-xl transition-transform duration-300',
-          'fixed inset-y-16 left-0 z-40 md:static md:translate-x-0',
+          'flex w-72 flex-col border-r border-[#e6e0d3] bg-[#f7f6f1]/90 backdrop-blur-2xl shadow-xl transition-transform duration-300',
+          'fixed left-0 top-0 bottom-0 z-30 h-screen md:translate-x-0',
           isOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/40 p-4">
-          <h2 className="font-inter text-lg font-semibold text-gray-900">Conversas</h2>
+        <div className="flex-shrink-0 flex items-center justify-between border-b border-white/40 px-3 py-3">
+          <h2 className="font-freight text-xl font-medium text-gray-900">Conversas</h2>
           <button
             onClick={onCreateConversation}
             className="flex h-9 items-center gap-2 rounded-full bg-[#20202a] px-3 font-inter text-sm font-medium text-white transition-transform hover:scale-[1.01]"
@@ -119,10 +182,31 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         </div>
 
         {availableProjects.length > 0 && (
-          <div className="border-b border-white/40 px-4 pb-3">
-            <p className="font-inter text-xs uppercase tracking-wide text-gray-500">
-              Projetos
-            </p>
+          <div className="flex-shrink-0 border-b border-white/40 px-4 py-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-freight text-base font-semibold uppercase tracking-wide text-gray-700">
+                Projetos
+              </p>
+              <button
+                onClick={onCreateConversation}
+                className="flex h-8 items-center gap-1.5 rounded-full bg-[#20202a] px-3 font-inter text-xs font-medium text-white transition-transform hover:scale-[1.02]"
+              >
+                <svg
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                Nova
+              </button>
+            </div>
             <div className="mt-2 flex flex-wrap gap-2">
               <button
                 onClick={() => onProjectFilterChange(null)}
@@ -171,9 +255,25 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-inter text-sm font-medium text-gray-900">
-                        {conversation.title || 'Sem título'}
-                      </p>
+                      {/* Title - Editable or Display */}
+                      {editingId === conversation.id ? (
+                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            ref={editInputRef}
+                            type="text"
+                            value={editingTitle}
+                            onChange={(e) => setEditingTitle(e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(e, conversation.id)}
+                            onBlur={() => handleSaveEdit(conversation.id)}
+                            className="w-full rounded border border-gray-300 px-2 py-1 font-inter text-sm font-medium text-gray-900 focus:border-[#20202a] focus:outline-none"
+                          />
+                        </div>
+                      ) : (
+                        <p className="truncate font-inter text-sm font-medium text-gray-900">
+                          {conversation.title || 'Sem título'}
+                        </p>
+                      )}
+
                       {conversation.metadata?.project && (
                         <p className="font-inter text-[11px] uppercase tracking-wide text-gray-500">
                           {conversation.metadata.project}
@@ -184,26 +284,52 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                       </p>
                     </div>
 
-                    {/* Delete Button */}
-                    <button
-                      onClick={(e) => handleDelete(e, conversation.id)}
-                      className="opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
-                      disabled={deletingId === conversation.id}
-                    >
-                      <svg
-                        className="h-4 w-4 text-gray-400 hover:text-red-600"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
+                    {/* Edit and Delete Buttons */}
+                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                      {/* Edit Button */}
+                      <button
+                        onClick={(e) => handleStartEdit(e, conversation.id, conversation.title || 'Sem título')}
+                        className="rounded p-1 hover:bg-gray-200 active:scale-95 transition-transform"
+                        disabled={deletingId === conversation.id || editingId === conversation.id}
+                        aria-label="Editar conversa"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                        />
-                      </svg>
-                    </button>
+                        <svg
+                          className="h-4 w-4 text-gray-400 hover:text-[#20202a]"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                          />
+                        </svg>
+                      </button>
+
+                      {/* Delete Button */}
+                      <button
+                        onClick={(e) => handleDeleteClick(e, conversation.id)}
+                        className="rounded p-1 hover:bg-gray-200 active:scale-95 transition-transform"
+                        disabled={deletingId === conversation.id || editingId === conversation.id}
+                        aria-label="Deletar conversa"
+                      >
+                        <svg
+                          className="h-4 w-4 text-gray-400 hover:text-red-600"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -236,7 +362,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         </div>
 
         {/* Footer Info */}
-        <div className="border-t border-white/40 bg-white/60 p-4">
+        <div className="flex-shrink-0 border-t border-white/40 bg-white/60 p-4">
           <div className="rounded-2xl border border-white/50 bg-white/80 p-3 backdrop-blur-md">
             <div className="flex items-center gap-2 text-[#20202a]">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -255,8 +381,67 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       {isOpen && (
         <div
           onClick={onToggle}
-          className="fixed inset-0 z-30 bg-black/20 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-20 bg-black/20 backdrop-blur-sm md:hidden"
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <Portal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={handleCancelDelete}
+            />
+
+            {/* Modal */}
+            <div className="relative z-10 w-full max-w-sm rounded-2xl border border-[#e6e0d3] bg-white p-6 shadow-2xl">
+              {/* Icon */}
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                <svg
+                  className="h-6 w-6 text-red-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+              </div>
+
+              {/* Title */}
+              <h3 className="mb-2 text-center font-freight text-lg font-semibold text-gray-900">
+                Deletar conversa?
+              </h3>
+
+              {/* Description */}
+              <p className="mb-6 text-center font-inter text-sm text-gray-600">
+                Esta ação não pode ser desfeita. A conversa e todas as mensagens serão permanentemente removidas.
+              </p>
+
+              {/* Buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={handleCancelDelete}
+                  className="flex-1 rounded-full border border-gray-300 bg-white px-4 py-2.5 font-inter text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleConfirmDelete}
+                  className="flex-1 rounded-full bg-red-600 px-4 py-2.5 font-inter text-sm font-medium text-white transition-colors hover:bg-red-700"
+                >
+                  Deletar
+                </button>
+              </div>
+            </div>
+          </div>
+        </Portal>
       )}
     </>
   );

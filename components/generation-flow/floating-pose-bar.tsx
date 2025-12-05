@@ -18,6 +18,7 @@ interface CustomizationBadges {
   facialExpression?: string | null;
   hairColor?: string | null;
   hasAITools?: boolean;
+  gender?: 'MALE' | 'FEMALE' | null;
 }
 
 interface FloatingPoseBarProps {
@@ -113,6 +114,7 @@ export function FloatingPoseBar({
                     height={customizations.height}
                     weight={customizations.weight}
                     hasAITools={customizations.hasAITools}
+                    gender={customizations.gender}
                   />
                 )}
               </div>

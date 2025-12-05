@@ -11,7 +11,8 @@ export interface HairColorOption {
   imagePath: string;
 }
 
-export const DEFAULT_HAIR_COLORS: HairColorOption[] = [
+// Default hair color options for female
+export const DEFAULT_HAIR_COLORS_FEMALE: HairColorOption[] = [
   { value: 'blonde', label: 'Loiro', hexColor: '#F5E5B8', imagePath: '/assets/images/hair-colors/blonde.jpg' },
   { value: 'light_brown', label: 'Castanho Claro', hexColor: '#A68A64', imagePath: '/assets/images/hair-colors/light_brown.jpg' },
   { value: 'dark_brown', label: 'Castanho Escuro', hexColor: '#4A3728', imagePath: '/assets/images/hair-colors/dark_brown.jpg' },
@@ -20,23 +21,41 @@ export const DEFAULT_HAIR_COLORS: HairColorOption[] = [
   { value: 'gray', label: 'Grisalho', hexColor: '#A8A8A8', imagePath: '/assets/images/hair-colors/gray.jpg' },
 ];
 
+// Default hair color options for male
+export const DEFAULT_HAIR_COLORS_MALE: HairColorOption[] = [
+  { value: 'blonde', label: 'Loiro', hexColor: '#F5E5B8', imagePath: '/assets/images/hair-colors/blonde_men.png' },
+  { value: 'light_brown', label: 'Castanho Claro', hexColor: '#A68A64', imagePath: '/assets/images/hair-colors/light_brown_men.png' },
+  { value: 'dark_brown', label: 'Castanho Escuro', hexColor: '#4A3728', imagePath: '/assets/images/hair-colors/dark_brown_men.png' },
+  { value: 'afro', label: 'Afro', hexColor: '#1C1C1C', imagePath: '/assets/images/hair-colors/afro_men.png' },
+  { value: 'red', label: 'Ruivo', hexColor: '#B94E48', imagePath: '/assets/images/hair-colors/red_men.png' },
+  { value: 'gray', label: 'Grisalho', hexColor: '#A8A8A8', imagePath: '/assets/images/hair-colors/gray_men.png' },
+];
+
+// Legacy export for backwards compatibility
+export const DEFAULT_HAIR_COLORS = DEFAULT_HAIR_COLORS_FEMALE;
+
 interface HairColorPickerProps {
   value: string | null;
   onChange: (value: string | null) => void;
   colors?: HairColorOption[];
+  gender?: 'MALE' | 'FEMALE' | null;
   className?: string;
 }
 
 /**
  * Component for selecting hair color
  * Displays as a grid of color swatches with labels
+ * Switches between male/female images based on gender prop
  */
 export function HairColorPicker({
   value,
   onChange,
-  colors = DEFAULT_HAIR_COLORS,
+  colors,
+  gender = 'FEMALE',
   className,
 }: HairColorPickerProps) {
+  // Use gender-specific colors if no custom colors provided
+  const displayColors = colors || (gender === 'MALE' ? DEFAULT_HAIR_COLORS_MALE : DEFAULT_HAIR_COLORS_FEMALE);
   const handleSelect = (colorValue: string) => {
     // Toggle: if already selected, deselect
     if (value === colorValue) {
@@ -67,9 +86,9 @@ export function HairColorPicker({
         Escolha a cor do cabelo para a modelo (opcional)
       </p>
 
-      {/* Grid of color options */}
-      <div className="grid grid-cols-3 gap-4 md:gap-6">
-        {colors.map((color) => {
+      {/* Grid of color options - single row of 6 */}
+      <div className="grid grid-cols-6 gap-3 md:gap-4">
+        {displayColors.map((color) => {
           const isSelected = value === color.value;
 
           return (
@@ -78,7 +97,7 @@ export function HairColorPicker({
               type="button"
               onClick={() => handleSelect(color.value)}
               className={cn(
-                'relative rounded-2xl overflow-hidden',
+                'relative rounded-xl overflow-hidden',
                 'transition-all duration-300 ease-out',
                 'focus:outline-none focus-visible:ring-4 focus-visible:ring-[#20202a]/20',
                 'active:scale-[0.98]',
@@ -96,7 +115,7 @@ export function HairColorPicker({
               )}
             >
               {/* Hair Color Image */}
-              <div className="relative aspect-square w-full">
+              <div className="relative aspect-[2/3] w-full">
                 <Image
                   src={color.imagePath}
                   alt={color.label}
@@ -177,10 +196,10 @@ export function HairColorPicker({
         <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 flex items-center gap-2">
           <div
             className="w-4 h-4 rounded-full ring-1 ring-gray-300"
-            style={{ backgroundColor: colors.find((c) => c.value === value)?.hexColor }}
+            style={{ backgroundColor: displayColors.find((c) => c.value === value)?.hexColor }}
           />
           <p className="font-inter text-xs text-gray-600">
-            Cor selecionada: <span className="font-semibold">{colors.find((c) => c.value === value)?.label || 'Desconhecida'}</span>
+            Cor selecionada: <span className="font-semibold">{displayColors.find((c) => c.value === value)?.label || 'Desconhecida'}</span>
           </p>
         </div>
       )}

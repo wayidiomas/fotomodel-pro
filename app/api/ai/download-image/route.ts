@@ -1,20 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { base64ToBuffer } from '@/lib/images/watermark';
-import { uploadGeneratedImage } from '@/lib/storage/upload';
 
-interface GenerationResultRecord {
-  id: string;
-  generation_id: string;
-  image_url: string;
-  thumbnail_url: string | null;
-  is_purchased: boolean | null;
-  metadata: Record<string, any> | null;
-  generations: {
-    user_id: string;
-  };
-}
-
+/**
+ * POST /api/ai/download-image
+ * Returns the download URL for a generated image.
+ * Since watermarks are disabled, all images are already clean.
+ */
 export async function POST(request: NextRequest) {
   try {
     const { resultId } = await request.json();
@@ -47,7 +38,6 @@ export async function POST(request: NextRequest) {
         generation_id,
         image_url,
         thumbnail_url,
-        is_purchased,
         metadata,
         generations!inner (
           user_id
@@ -73,103 +63,48 @@ export async function POST(request: NextRequest) {
 
     const metadata = (result.metadata || {}) as Record<string, any>;
 
-    const generatedUrlData = result.image_url
-      ? supabase.storage.from('generated-images').getPublicUrl(result.image_url)
+    // Get public URL for the image
+    const { data: urlData } = supabase.storage
+      .from('generated-images')
+      .getPublicUrl(result.image_url);
+
+    const imageUrl = urlData?.publicUrl
+      ? `${urlData.publicUrl}?t=${Date.now()}`
       : null;
-    const currentImageUrl = generatedUrlData?.data?.publicUrl || null;
 
-    // If already purchased, just provide the clean image URL (cache-busted)
-    if (result.is_purchased && metadata?.cleanImageData == null) {
-      const purchasedPath = metadata?.purchasedPath || result.image_url;
-      const purchasedBucket =
-        metadata?.purchasedBucket ||
-        (metadata?.purchasedPath ? 'purchased-images' : 'generated-images');
+    // Record download
+    await (supabase.from('user_downloads') as any).insert({
+      user_id: user.id,
+      generation_id: result.generation_id,
+      result_id: result.id,
+      image_url: result.image_url,
+      thumbnail_url: result.thumbnail_url,
+      credits_charged: 0,
+    });
 
-      let purchasedUrl: string | null = null;
-      if (purchasedPath) {
-        const { data: bucketUrlData } = supabase.storage
-          .from(purchasedBucket)
-          .getPublicUrl(purchasedPath);
-        purchasedUrl = bucketUrlData?.publicUrl || null;
-      }
-
-      const resolvedUrl = purchasedUrl || currentImageUrl;
-
-      return NextResponse.json({
-        success: true,
-        imageUrl: resolvedUrl ? `${resolvedUrl}?t=${Date.now()}` : null,
-        mimeType: metadata?.cleanMimeType || 'image/png',
-        creditsRemaining: undefined,
-        resultId,
-        alreadyPurchased: true,
-      });
-    }
-
-    const cleanImageData = metadata?.cleanImageData;
-    const cleanMimeType = metadata?.cleanMimeType || 'image/png';
-
-    if (!cleanImageData) {
-      return NextResponse.json(
-        {
-          error:
-            'Não foi possível localizar a imagem original sem marca d’água. Gere novamente e tente de novo.',
-        },
-        { status: 422 }
-      );
-    }
-
-    const cleanBuffer = base64ToBuffer(cleanImageData);
-
-    const uploadResult = await uploadGeneratedImage(
-      user.id,
-      result.generation_id,
-      cleanBuffer,
-      cleanMimeType,
-      result.image_url || undefined
-    );
-
-    if (!uploadResult.success || !uploadResult.path) {
-      return NextResponse.json(
-        { error: uploadResult.error || 'Erro ao salvar imagem limpa' },
-        { status: 500 }
-      );
-    }
-
-    const cleanPublicUrl = uploadResult.publicUrl || currentImageUrl;
-    const cleanImageUrl = cleanPublicUrl ? `${cleanPublicUrl}?t=${Date.now()}` : null;
-
-    const updatedMetadata = {
-      ...metadata,
-      cleanImageData: null,
-      purchasedPath: uploadResult.path,
-      purchasedBucket: 'generated-images',
-      purchasedAt: new Date().toISOString(),
-    };
-
-    await Promise.all([
-      (supabase.from('generation_results') as any)
-        .update({
-          is_purchased: true,
-          has_watermark: false,
-          image_url: uploadResult.path,
-          metadata: updatedMetadata,
-        })
-        .eq('id', resultId),
-      (supabase.from('user_downloads') as any).insert({
+    // Also save to gallery (ignore if already exists)
+    try {
+      await (supabase.from('gallery_items') as any).insert({
         user_id: user.id,
-        generation_id: result.generation_id,
-        result_id: result.id,
-        image_url: uploadResult.path,
+        generation_result_id: result.id,
+        image_url: result.image_url,
         thumbnail_url: result.thumbnail_url,
-        credits_charged: 0,
-      }),
-    ]);
+        metadata: {
+          saved_at: new Date().toISOString(),
+          saved_from: 'download',
+        },
+      });
+    } catch (galleryError: any) {
+      // Ignore duplicate errors (unique constraint violation)
+      if (galleryError.code !== '23505') {
+        console.error('Error saving to gallery:', galleryError);
+      }
+    }
 
     return NextResponse.json({
       success: true,
-      imageUrl: cleanImageUrl,
-      mimeType: cleanMimeType,
-      creditsRemaining: undefined,
+      imageUrl,
+      mimeType: metadata?.mimeType || 'image/png',
       resultId,
     });
   } catch (error) {

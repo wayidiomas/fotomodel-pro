@@ -38,7 +38,7 @@ export const ProfessionalTipsCard: React.FC<ProfessionalTipsCardProps> = ({
             className="brightness-0 invert"
           />
         </div>
-        <h3 className="font-inter font-bold text-xl leading-normal text-[#1e3a8a]">
+        <h3 className="font-freight font-medium text-2xl leading-normal text-[#1e3a8a]">
           Dicas Profissionais
         </h3>
       </div>

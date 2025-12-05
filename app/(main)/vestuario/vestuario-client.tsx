@@ -4,25 +4,39 @@ import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import {
-  Plus,
   Folder,
   MoreVertical,
   Sparkles,
   UploadCloud,
   Layers,
+  Loader2,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import type { Tables } from '@/types/database.types';
 import type { WardrobeItemWithUpload } from './page';
 import { getStoragePublicUrl } from '@/lib/storage/upload';
 import { CreateCollectionDialog } from '@/components/vestuario/create-collection-dialog';
 import { AddWardrobeItemDialog } from '@/components/vestuario/add-wardrobe-item-dialog';
+import { EditWardrobeItemDialog } from '@/components/vestuario/edit-wardrobe-item-dialog';
+import { SubscriptionModal } from '@/components/subscription/subscription-modal';
 import { cn } from '@/lib/utils';
 import { GarmentCategory } from '@/lib/generation-flow/garment-metadata-types';
 import { createClient } from '@/lib/supabase/client';
+import { useWardrobeItems, useWardrobeCollections, useInvalidateQueries, useWardrobeLimits } from '@/lib/hooks/use-queries';
+
+interface PaginationInfo {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasMore: boolean;
+}
 
 interface VestuarioClientProps {
   collections: Tables<'wardrobe_collections'>[];
-  items: WardrobeItemWithUpload[];
+  initialItems: WardrobeItemWithUpload[];
+  pagination: PaginationInfo;
 }
 
 // Garment category groups for filtering
@@ -79,8 +93,41 @@ const COLLECTION_COLORS = [
   '#EC4899', // pink-500
 ];
 
-export function VestuarioClient({ collections, items }: VestuarioClientProps) {
+export function VestuarioClient({
+  collections: initialCollections,
+  initialItems,
+  pagination: initialPagination
+}: VestuarioClientProps) {
   const router = useRouter();
+  const { invalidateWardrobe } = useInvalidateQueries();
+
+  // React Query for wardrobe items with infinite scroll
+  const {
+    data: itemsData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useWardrobeItems();
+
+  // React Query for collections
+  const { data: collectionsData } = useWardrobeCollections();
+
+  // Check wardrobe limits
+  const { data: limits } = useWardrobeLimits();
+
+  // Use cached data or fall back to initial SSR data
+  const items = useMemo(() => {
+    if (itemsData?.pages?.length) {
+      return itemsData.pages.flatMap(page => page.items) as WardrobeItemWithUpload[];
+    }
+    return initialItems;
+  }, [itemsData, initialItems]);
+
+  const collections = collectionsData || initialCollections;
+  const pagination = itemsData?.pages?.length
+    ? itemsData.pages[itemsData.pages.length - 1].pagination
+    : initialPagination;
+
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -99,7 +146,34 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
   });
   const [modalError, setModalError] = useState<string | null>(null);
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const itemsSectionRef = useRef<HTMLDivElement>(null);
+  const [openItemMenu, setOpenItemMenu] = useState<string | null>(null);
+
+  // Edit item state
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [itemToEdit, setItemToEdit] = useState<WardrobeItemWithUpload | null>(null);
+
+  // Delete item confirmation modal state
+  const [deleteItemModal, setDeleteItemModal] = useState<{
+    open: boolean;
+    itemId: string | null;
+    itemName: string;
+  }>({
+    open: false,
+    itemId: null,
+    itemName: '',
+  });
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
+
+  // Load more using React Query
+  const loadMore = () => {
+    if (!isFetchingNextPage && hasNextPage) {
+      fetchNextPage();
+    }
+  };
+
+  const isLoadingMore = isFetchingNextPage;
 
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -117,7 +191,7 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
     return counts;
   }, [items]);
 
-  const totalPieces = items.length;
+  const totalPieces = pagination.total;
   const totalCollections = collections.length;
   const extendedFilters = [
     { slug: null, label: 'Todas as categorias' },
@@ -127,9 +201,9 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
   const filteredItems = items.filter((item) => {
     const matchesCategory = selectedCategory
       ? (() => {
-          const filter = CATEGORY_FILTERS.find(f => f.slug === selectedCategory);
-          return filter && item.garment_type && filter.categories.includes(item.garment_type);
-        })()
+        const filter = CATEGORY_FILTERS.find(f => f.slug === selectedCategory);
+        return filter && item.garment_type && filter.categories.includes(item.garment_type);
+      })()
       : true;
     const matchesCollection = activeCollectionId ? item.collection_id === activeCollectionId : true;
     return matchesCategory && matchesCollection;
@@ -188,7 +262,14 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
       ) {
         return;
       }
+      if (
+        target?.closest('[data-item-menu-trigger]') ||
+        target?.closest('[data-item-menu-panel]')
+      ) {
+        return;
+      }
       setOpenCollectionMenu(null);
+      setOpenItemMenu(null);
     };
     document.addEventListener('click', handleDocumentClick);
     return () => document.removeEventListener('click', handleDocumentClick);
@@ -251,6 +332,66 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
     }
   };
 
+  const handleItemMenuToggle = (event: React.MouseEvent, itemId: string) => {
+    event.stopPropagation();
+    setOpenItemMenu((prev) => (prev === itemId ? null : itemId));
+  };
+
+  const handleEditItem = (itemId: string) => {
+    setOpenItemMenu(null);
+    const item = items.find(i => i.id === itemId);
+    if (item) {
+      setItemToEdit(item);
+      setIsEditDialogOpen(true);
+    }
+  };
+
+  const handleDeleteItem = (itemId: string) => {
+    setOpenItemMenu(null);
+    const item = items.find(i => i.id === itemId);
+    if (item) {
+      setDeleteItemModal({
+        open: true,
+        itemId: item.id,
+        itemName: item.upload?.file_name || 'esta peça',
+      });
+    }
+  };
+
+  const [deleteItemError, setDeleteItemError] = useState<string | null>(null);
+
+  const confirmDeleteItem = async () => {
+    if (!deleteItemModal.itemId) return;
+
+    setIsDeletingItem(true);
+    setDeleteItemError(null);
+    try {
+      const response = await fetch('/api/wardrobe/items', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ itemId: deleteItemModal.itemId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao excluir peça');
+      }
+
+      setDeleteItemModal({ open: false, itemId: null, itemName: '' });
+      invalidateWardrobe();
+      router.refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro inesperado ao excluir peça';
+      console.error('Error deleting item:', message);
+      setDeleteItemError(message);
+    } finally {
+      setIsDeletingItem(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-8 px-10 py-8">
       {/* Hero */}
@@ -263,19 +404,38 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
               Guarda-roupa digital
             </div>
             <div className="space-y-1">
-              <h1 className="font-inter text-3xl font-bold text-[#111827]">Vestuário</h1>
+              <h1 className="font-freight font-medium text-3xl text-[#111827]">Vestuário</h1>
               <p className="font-inter text-base text-[#4b5563]">
                 Salve peças, organize coleções e acelere sua criação com referências visuais.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <button
-                onClick={() => handleAddPieceClick()}
-                className="inline-flex items-center gap-2 rounded-2xl border border-[#20202a]/10 bg-[#20202a] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-[#20202a]/30 transition hover:bg-[#2b2b35]"
-              >
-                <UploadCloud className="h-4 w-4" />
-                Adicionar peça
-              </button>
+              <div className="relative group">
+                <button
+                  onClick={() => handleAddPieceClick()}
+                  disabled={limits?.isAtLimit}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-2xl border border-[#20202a]/10 bg-[#20202a] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-[#20202a]/30 transition hover:bg-[#2b2b35]",
+                    limits?.isAtLimit && "opacity-50 cursor-not-allowed hover:bg-[#20202a]"
+                  )}
+                >
+                  <UploadCloud className="h-4 w-4" />
+                  Adicionar peça
+                </button>
+                {limits?.isAtLimit && (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsSubscriptionModalOpen(true);
+                    }}
+                    className="absolute left-1/2 top-full mt-2 w-64 -translate-x-1/2 cursor-pointer rounded-xl bg-gray-900 px-3 py-2 text-center text-xs text-white opacity-0 shadow-xl transition-all hover:bg-gray-800 group-hover:opacity-100"
+                  >
+                    Você atingiu o limite de {limits.maxItems} peças do plano {limits.planSlug === 'free' ? 'Gratuito' : limits.planSlug}.{' '}
+                    <span className="font-semibold underline">Clique aqui para fazer upgrade</span>
+                    <div className="absolute bottom-full left-1/2 -mb-1 -ml-1 border-4 border-transparent border-b-gray-900" />
+                  </div>
+                )}
+              </div>
               <button
                 onClick={() => setIsCreateDialogOpen(true)}
                 className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-[#111827] shadow-sm"
@@ -310,7 +470,7 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-inter text-xl font-semibold text-[#020817]">
+            <h2 className="font-freight font-medium text-xl text-[#020817]">
               Coleções
             </h2>
             <p className="text-sm text-gray-500">
@@ -360,7 +520,7 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
                     <Folder className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="truncate font-inter text-base font-semibold text-[#020817]">
+                    <h3 className="truncate font-freight font-medium text-lg text-[#020817]">
                       {collection.name}
                     </h3>
                     <p className="text-sm text-gray-500">
@@ -407,9 +567,18 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
                             setOpenCollectionMenu(null);
                             handleAddPieceClick(collection.id);
                           }}
-                          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-100"
+                          disabled={limits?.isAtLimit}
+                          className={cn(
+                            "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium",
+                            limits?.isAtLimit
+                              ? "cursor-not-allowed text-gray-400 opacity-50"
+                              : "text-gray-700 hover:bg-gray-100"
+                          )}
                         >
                           Adicionar peças
+                          {limits?.isAtLimit && (
+                            <span className="ml-auto text-[10px] text-gray-400">(limite atingido)</span>
+                          )}
                         </button>
                         <button
                           onClick={(event) => {
@@ -440,7 +609,7 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
       {/* Filters */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-inter text-xl font-semibold text-[#020817]">
+          <h2 className="font-freight font-medium text-xl text-[#020817]">
             Navegue por categoria
           </h2>
           {selectedCategory && (
@@ -489,7 +658,7 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
       <section ref={itemsSectionRef} className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-inter text-xl font-semibold text-[#020817]">
+            <h2 className="font-freight font-medium text-xl text-[#020817]">
               Peças salvas
             </h2>
             <p className="text-sm text-gray-500">
@@ -503,16 +672,10 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
               </p>
             )}
           </div>
-          <button
-            disabled
-            className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-[#111827] shadow-sm"
-          >
-            <Plus className="h-4 w-4" />
-            Upload em massa
-          </button>
         </div>
 
         {filteredItems.length > 0 ? (
+          <>
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {filteredItems.map((item) => {
               const imageUrl =
@@ -553,19 +716,75 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
                           {createdDate ? createdDate.toLocaleDateString('pt-BR') : 'Data indefinida'}
                         </p>
                       </div>
-                      <button
-                        className="rounded-full border border-white/40 bg-white/20 p-2 opacity-0 transition-opacity group-hover:opacity-100"
-                        disabled
-                        aria-label="Ver detalhes"
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                      </button>
+                      <div className="relative" data-item-menu-panel-wrapper>
+                        <button
+                          className="rounded-full border border-white/40 bg-white/20 p-2 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/30"
+                          aria-label="Ações da peça"
+                          data-item-menu-trigger
+                          onClick={(event) => handleItemMenuToggle(event, item.id)}
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                        {openItemMenu === item.id && (
+                          <div
+                            className="absolute right-0 bottom-12 z-10 w-40 rounded-2xl border border-white/60 bg-white/95 p-1 shadow-lg backdrop-blur"
+                            data-item-menu-panel
+                          >
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleEditItem(item.id);
+                              }}
+                              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-100"
+                            >
+                              <Pencil className="h-4 w-4" />
+                              Editar
+                            </button>
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleDeleteItem(item.id);
+                              }}
+                              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-100"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Excluir
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
               );
             })}
           </div>
+
+          {/* Load More Button */}
+          {(hasNextPage || pagination?.hasMore) && !selectedCategory && !activeCollectionId && (
+            <div className="flex justify-center pt-8">
+              <button
+                onClick={loadMore}
+                disabled={isLoadingMore}
+                className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-6 py-3 text-sm font-semibold text-[#111827] shadow-sm hover:bg-gray-50 transition-all disabled:opacity-50"
+              >
+                {isLoadingMore ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Carregando...
+                  </>
+                ) : (
+                  <>
+                    Carregar mais
+                    <span className="text-gray-400">
+                      ({items.length} de {pagination?.total || items.length})
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+          </>
         ) : (
           <div className="rounded-[30px] border border-dashed border-gray-200 bg-white/70 p-16 text-center shadow-inner">
             <p className="text-base font-semibold text-gray-600">
@@ -583,21 +802,28 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
       <CreateCollectionDialog
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
-        onSuccess={() => router.refresh()}
+        onSuccess={() => {
+          invalidateWardrobe();
+          router.refresh();
+        }}
       />
       <AddWardrobeItemDialog
         open={isAddPieceDialogOpen}
         onOpenChange={handleAddPieceDialogChange}
-        collections={collections}
+        collections={collections as any}
         defaultCollectionId={preselectedCollectionId}
-        onSuccess={() => router.refresh()}
+        onSuccess={() => {
+          invalidateWardrobe();
+          router.refresh();
+        }}
+        onUpgradeClick={() => setIsSubscriptionModalOpen(true)}
       />
 
       {renameModal.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-[28px] border border-white/40 bg-white/95 p-6 shadow-2xl backdrop-blur">
             <div className="space-y-1">
-              <h3 className="text-lg font-semibold text-[#111827]">Renomear coleção</h3>
+              <h3 className="font-freight font-medium text-xl text-[#111827]">Renomear coleção</h3>
               <p className="text-sm text-gray-500">
                 Escolha um nome que ajude a identificar esta coleção no seu vestuário.
               </p>
@@ -647,7 +873,7 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-[28px] border border-white/40 bg-white/95 p-6 shadow-2xl backdrop-blur">
             <div className="space-y-1">
-              <h3 className="text-lg font-semibold text-[#111827]">Excluir coleção</h3>
+              <h3 className="font-freight font-medium text-xl text-[#111827]">Excluir coleção</h3>
               <p className="text-sm text-gray-500">
                 Tem certeza que deseja excluir a coleção{' '}
                 <span className="font-semibold text-[#7a5e2a]">{deleteModal.name}</span>? As peças
@@ -681,6 +907,63 @@ export function VestuarioClient({ collections, items }: VestuarioClientProps) {
           </div>
         </div>
       )}
+
+      <EditWardrobeItemDialog
+        open={isEditDialogOpen}
+        onOpenChange={(open) => {
+          setIsEditDialogOpen(open);
+          if (!open) setItemToEdit(null);
+        }}
+        item={itemToEdit}
+        collections={collections as any}
+        onSuccess={() => {
+          invalidateWardrobe();
+          router.refresh();
+        }}
+      />
+
+      {deleteItemModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[28px] border border-white/40 bg-white/95 p-6 shadow-2xl backdrop-blur">
+            <div className="space-y-1">
+              <h3 className="font-freight font-medium text-xl text-[#111827]">Excluir peça</h3>
+              <p className="text-sm text-gray-500">
+                Tem certeza que deseja excluir{' '}
+                <span className="font-semibold text-[#7a5e2a]">{deleteItemModal.itemName}</span>? Esta ação não pode ser desfeita.
+              </p>
+            </div>
+            {deleteItemError && (
+              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                {deleteItemError}
+              </div>
+            )}
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setDeleteItemModal({ open: false, itemId: null, itemName: '' });
+                  setDeleteItemError(null);
+                }}
+                className="rounded-2xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600"
+                disabled={isDeletingItem}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDeleteItem}
+                className="rounded-2xl bg-gradient-to-r from-[#b9372b] to-[#d85d4d] px-4 py-2 text-sm font-semibold text-white shadow disabled:opacity-60"
+                disabled={isDeletingItem}
+              >
+                {isDeletingItem ? 'Removendo...' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <SubscriptionModal
+        isOpen={isSubscriptionModalOpen}
+        onClose={() => setIsSubscriptionModalOpen(false)}
+      />
     </div>
   );
 }

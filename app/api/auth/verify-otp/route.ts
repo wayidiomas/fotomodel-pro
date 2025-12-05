@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { formatPhoneToE164, isValidE164Phone } from '@/lib/auth/whatsapp';
 import { checkRateLimit, incrementRateLimit, getClientIP } from '@/lib/auth/rate-limit';
+import { checkBubbleUserExists } from '@/lib/auth/bubble-detection';
 
 /**
  * Creates a Supabase client with service role key
@@ -190,13 +191,20 @@ export async function POST(request: NextRequest) {
       userId = newAuthUser.user.id;
       isNewUser = true;
 
-      // Create entry in public.users with 10 credits
+      // Check if user exists in Bubble
+      const bubbleCheck = await checkBubbleUserExists(phone);
+
+      // Create entry in public.users with 10 initial credits
+      // Bubble users will receive 50 bonus credits when they see the welcome popup
       const { error: createPublicUserError } = await supabase
         .from('users')
         .insert({
           id: userId,
           phone,
           credits: 10,
+          migrated_from_bubble: bubbleCheck.exists,
+          bubble_user_id: bubbleCheck.bubbleUserId || null,
+          bubble_welcome_shown: false, // Will show welcome popup on first dashboard visit
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
@@ -207,6 +215,11 @@ export async function POST(request: NextRequest) {
           { error: 'Failed to create user account' },
           { status: 500 }
         );
+      }
+
+      // Log Bubble user detection
+      if (bubbleCheck.exists) {
+        console.log(`🎉 Bubble user detected: ${phone} - Will receive 50 bonus credits on first dashboard visit`);
       }
     } else {
       // User exists - use existing user ID

@@ -102,7 +102,7 @@ export const WardrobePickerModal: React.FC<WardrobePickerModalProps> = ({
                 <Sparkles className="h-3.5 w-3.5" />
                 Vestuário
               </div>
-              <h3 className="text-2xl font-semibold text-[#151515]">{modalTitle}</h3>
+              <h3 className="font-freight text-2xl font-medium text-[#151515]">{modalTitle}</h3>
               <p className="text-sm text-gray-500">
                 Filtre por coleção, busque pelo nome da peça ou selecione rapidamente os favoritos.
               </p>
@@ -175,55 +175,55 @@ export const WardrobePickerModal: React.FC<WardrobePickerModalProps> = ({
 
           {paginatedItems.length > 0 ? (
             <>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {paginatedItems.map((item) => (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {paginatedItems.map((item) => (
+                  <button
+                    type="button"
+                    key={item.id}
+                    onClick={() => onSelect(item)}
+                    className="group flex flex-col overflow-hidden rounded-[28px] border border-white/60 bg-white/80 text-left shadow-[0_20px_55px_rgba(15,15,35,0.12)] backdrop-blur transition hover:-translate-y-1 hover:shadow-[0_25px_70px_rgba(15,15,35,0.18)]"
+                  >
+                    <div className="relative h-56 w-full overflow-hidden">
+                      <Image
+                        src={item.previewUrl || item.publicUrl}
+                        alt={item.fileName}
+                        fill
+                        className="object-cover transition duration-500 group-hover:scale-105"
+                        sizes="(max-width:768px) 90vw, 33vw"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0" />
+                      {item.collectionName && (
+                        <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full border border-white/30 bg-black/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white backdrop-blur">
+                          <Folder className="h-3.5 w-3.5" />
+                          {item.collectionName}
+                        </div>
+                      )}
+                    </div>
+                    <div className="px-4 py-3 text-left text-sm font-semibold text-[#111827]">
+                      {item.fileName}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center justify-center gap-3 text-sm text-gray-600">
                 <button
-                  type="button"
-                  key={item.id}
-                  onClick={() => onSelect(item)}
-                  className="group flex flex-col overflow-hidden rounded-[28px] border border-white/60 bg-white/80 text-left shadow-[0_20px_55px_rgba(15,15,35,0.12)] backdrop-blur transition hover:-translate-y-1 hover:shadow-[0_25px_70px_rgba(15,15,35,0.18)]"
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="rounded-full border border-gray-200 px-3 py-1 font-semibold text-[#111827] disabled:opacity-50"
                 >
-                  <div className="relative h-56 w-full overflow-hidden">
-                    <Image
-                      src={item.previewUrl || item.publicUrl}
-                      alt={item.fileName}
-                      fill
-                      className="object-cover transition duration-500 group-hover:scale-105"
-                      sizes="(max-width:768px) 90vw, 33vw"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0" />
-                    {item.collectionName && (
-                      <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full border border-white/30 bg-black/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white backdrop-blur">
-                        <Folder className="h-3.5 w-3.5" />
-                        {item.collectionName}
-                      </div>
-                    )}
-                  </div>
-                  <div className="px-4 py-3 text-left text-sm font-semibold text-[#111827]">
-                    {item.fileName}
-                  </div>
+                  Anterior
                 </button>
-              ))}
-            </div>
-            <div className="flex items-center justify-center gap-3 text-sm text-gray-600">
-              <button
-                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                className="rounded-full border border-gray-200 px-3 py-1 font-semibold text-[#111827] disabled:opacity-50"
-              >
-                Anterior
-              </button>
-              <span>
-                Página {currentPage} de {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                disabled={currentPage === totalPages}
-                className="rounded-full border border-gray-200 px-3 py-1 font-semibold text-[#111827] disabled:opacity-50"
-              >
-                Próxima
-              </button>
-            </div>
+                <span>
+                  Página {currentPage} de {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="rounded-full border border-gray-200 px-3 py-1 font-semibold text-[#111827] disabled:opacity-50"
+                >
+                  Próxima
+                </button>
+              </div>
             </>
           ) : (
             <div className="rounded-[28px] border border-dashed border-gray-200 bg-white/70 p-12 text-center shadow-inner">

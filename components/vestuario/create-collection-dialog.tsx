@@ -101,7 +101,7 @@ export function CreateCollectionDialog({
         </div>
 
         {/* Title */}
-        <h2 className="mb-[15px] text-center font-inter text-2xl font-bold leading-normal text-black">
+        <h2 className="mb-[15px] text-center font-freight text-2xl font-medium leading-normal text-black">
           Criar nova coleção
         </h2>
 

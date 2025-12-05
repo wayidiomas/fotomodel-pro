@@ -45,23 +45,23 @@ export default async function CategoryGenerationPage({ params }: PageProps) {
       .single();
     credits = userData?.credits ?? 0;
 
-    const { data: collectionsData } = await supabase
-      .from('wardrobe_collections')
+    const { data: collectionsData } = await (supabase
+      .from('wardrobe_collections') as any)
       .select('id, name, icon_color, item_count')
       .eq('user_id', user.id)
       .eq('is_deleted', false)
       .order('created_at', { ascending: false });
 
     wardrobeCollections =
-      collectionsData?.map<WardrobeCollectionSummary>((collection) => ({
+      collectionsData?.map((collection: any) => ({
         id: collection.id,
         name: collection.name,
         iconColor: collection.icon_color,
         itemCount: collection.item_count ?? 0,
       })) ?? [];
 
-    const { data: wardrobeItemsData } = await supabase
-      .from('wardrobe_items')
+    const { data: wardrobeItemsData } = await (supabase
+      .from('wardrobe_items') as any)
       .select(
         `
         id,
@@ -87,7 +87,7 @@ export default async function CategoryGenerationPage({ params }: PageProps) {
 
     wardrobeItems =
       wardrobeItemsData
-        ?.map((item) => {
+        ?.map((item: any) => {
           if (!item.upload) {
             return null;
           }
@@ -121,13 +121,13 @@ export default async function CategoryGenerationPage({ params }: PageProps) {
             fileName: item.upload.file_name ?? 'Peça do vestuário',
             fileSize: item.upload.file_size ?? 0,
             mimeType: item.upload.mime_type ?? 'image/jpeg',
-          } satisfies WardrobePickerItem;
+          } as WardrobePickerItem;
         })
-        .filter((item): item is WardrobePickerItem => Boolean(item)) ?? [];
+        .filter((item: any): item is WardrobePickerItem => Boolean(item)) ?? [];
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-[#fdfbf7] via-[#fff] to-[#f7f4ef]">
       <MainHeader currentPage="criar" credits={credits} />
 
       {/* Client Components */}

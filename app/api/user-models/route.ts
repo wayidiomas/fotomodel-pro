@@ -6,6 +6,8 @@ interface SaveModelRequest {
   imageUrl: string;
   thumbnailUrl?: string | null;
   modelName?: string;
+  gender?: string | null;
+  ageRange?: string | null;
   heightCm?: number | null;
   weightKg?: number | null;
   facialExpression?: string | null;
@@ -33,6 +35,8 @@ export async function POST(request: NextRequest) {
       imageUrl,
       thumbnailUrl,
       modelName,
+      gender,
+      ageRange,
       heightCm,
       weightKg,
       facialExpression,
@@ -130,13 +134,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Use user-provided age values if available, otherwise fall back to pose metadata
+    // Use user-provided values if available, otherwise fall back to pose metadata
+    const finalGender = gender || poseGender;
     const finalAgeMin = ageMin ?? poseAgeMin;
     const finalAgeMax = ageMax ?? poseAgeMax;
 
-    // Generate age_range string if we have age values
-    let finalAgeRange = poseAgeRange;
-    if (finalAgeMin !== null && finalAgeMax !== null) {
+    // Generate age_range string: prioritize user input, then calculated, then pose metadata
+    let finalAgeRange = ageRange || poseAgeRange;
+    if (!finalAgeRange && finalAgeMin !== null && finalAgeMax !== null) {
       finalAgeRange = `${finalAgeMin}-${finalAgeMax}`;
     }
 
@@ -152,7 +157,7 @@ export async function POST(request: NextRequest) {
       hair_color: hairColor,
       pose_id: storedPoseId,
       pose_name: poseName,
-      gender: poseGender,
+      gender: finalGender,
       age_min: finalAgeMin,
       age_max: finalAgeMax,
       age_range: finalAgeRange,
@@ -179,6 +184,27 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Erro ao salvar modelo. Tente novamente.' },
         { status: 500 }
       );
+    }
+
+    // Also save to gallery (ignore if already exists)
+    try {
+      await (supabase.from('gallery_items') as any).insert({
+        user_id: user.id,
+        generation_result_id: generationResultId,
+        image_url: imageUrl || resultRecord.image_url,
+        thumbnail_url: thumbnailUrl || resultRecord.thumbnail_url,
+        metadata: {
+          saved_at: new Date().toISOString(),
+          saved_from: 'save_model',
+          model_id: insertData.id,
+          model_name: modelName?.trim() || 'Modelo Personalizado',
+        },
+      });
+    } catch (galleryError: any) {
+      // Ignore duplicate errors (unique constraint violation)
+      if (galleryError.code !== '23505') {
+        console.error('Error saving to gallery:', galleryError);
+      }
     }
 
     return NextResponse.json({

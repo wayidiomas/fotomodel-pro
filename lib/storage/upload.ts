@@ -74,6 +74,7 @@ export async function uploadUserImage(
 
 /**
  * Upload AI-generated image to generated-images bucket
+ * Includes retry logic for network errors
  */
 export async function uploadGeneratedImage(
   userId: string,
@@ -82,42 +83,86 @@ export async function uploadGeneratedImage(
   mimeType: string = 'image/png',
   customPath?: string
 ): Promise<UploadResult> {
-  try {
-    const supabase = getStorageClient();
-    const extension = mimeType.split('/')[1] || 'png';
-    const path = customPath || `${userId}/generations/${generationId}.${extension}`;
+  const MAX_RETRIES = 3;
+  const RETRY_DELAYS = [1000, 2000, 3000]; // Progressive delays in ms
 
-    const { data, error } = await supabase.storage
-      .from('generated-images')
-      .upload(path, imageBuffer, {
-        contentType: mimeType,
-        upsert: true, // Allow overwriting for regenerations
-      });
+  const supabase = getStorageClient();
+  const extension = mimeType.split('/')[1] || 'png';
+  const path = customPath || `${userId}/generations/${generationId}.${extension}`;
 
-    if (error) {
-      console.error('Error uploading generated image:', error);
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      if (attempt > 0) {
+        console.log(`[uploadGeneratedImage] Retry attempt ${attempt + 1}/${MAX_RETRIES} after ${RETRY_DELAYS[attempt - 1]}ms delay`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt - 1]));
+      }
+
+      const { data, error } = await supabase.storage
+        .from('generated-images')
+        .upload(path, imageBuffer, {
+          contentType: mimeType,
+          upsert: true, // Allow overwriting for regenerations
+        });
+
+      if (error) {
+        // Check if it's a network error that's worth retrying
+        const isNetworkError = error.message?.toLowerCase().includes('fetch failed') ||
+          error.message?.toLowerCase().includes('socket') ||
+          error.message?.toLowerCase().includes('econnreset') ||
+          error.message?.toLowerCase().includes('timeout');
+
+        if (isNetworkError && attempt < MAX_RETRIES - 1) {
+          console.warn(`[uploadGeneratedImage] Network error on attempt ${attempt + 1}, will retry:`, error.message);
+          continue; // Retry
+        }
+
+        console.error('Error uploading generated image:', error);
+        return {
+          success: false,
+          error: error.message,
+        };
+      }
+
+      // Success - get public URL
+      const { data: urlData } = supabase.storage
+        .from('generated-images')
+        .getPublicUrl(path);
+
+      if (attempt > 0) {
+        console.log(`[uploadGeneratedImage] Success on retry attempt ${attempt + 1}`);
+      }
+
+      return {
+        success: true,
+        path: data.path,
+        publicUrl: urlData.publicUrl,
+      };
+    } catch (error) {
+      const isNetworkError = error instanceof Error && (
+        error.message?.toLowerCase().includes('fetch failed') ||
+        error.message?.toLowerCase().includes('socket') ||
+        error.message?.toLowerCase().includes('econnreset') ||
+        error.message?.toLowerCase().includes('timeout')
+      );
+
+      if (isNetworkError && attempt < MAX_RETRIES - 1) {
+        console.warn(`[uploadGeneratedImage] Caught network exception on attempt ${attempt + 1}, will retry:`, error instanceof Error ? error.message : error);
+        continue; // Retry
+      }
+
+      console.error('Error in uploadGeneratedImage:', error);
       return {
         success: false,
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
-
-    const { data: urlData } = supabase.storage
-      .from('generated-images')
-      .getPublicUrl(path);
-
-    return {
-      success: true,
-      path: data.path,
-      publicUrl: urlData.publicUrl,
-    };
-  } catch (error) {
-    console.error('Error in uploadGeneratedImage:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
   }
+
+  // All retries exhausted
+  return {
+    success: false,
+    error: 'Upload failed after maximum retries',
+  };
 }
 
 /**
@@ -169,6 +214,7 @@ export async function uploadPurchasedImage(
 
 /**
  * Upload thumbnail image
+ * Includes retry logic for network errors
  */
 export async function uploadThumbnail(
   userId: string,
@@ -176,42 +222,86 @@ export async function uploadThumbnail(
   thumbnailBuffer: Buffer,
   mimeType: string = 'image/jpeg'
 ): Promise<UploadResult> {
-  try {
-    const supabase = getStorageClient();
-    const extension = mimeType.split('/')[1] || 'jpg';
-    const path = `${userId}/thumbnails/${originalId}_thumb.${extension}`;
+  const MAX_RETRIES = 3;
+  const RETRY_DELAYS = [1000, 2000, 3000]; // Progressive delays in ms
 
-    const { data, error } = await supabase.storage
-      .from('thumbnails')
-      .upload(path, thumbnailBuffer, {
-        contentType: mimeType,
-        upsert: true,
-      });
+  const supabase = getStorageClient();
+  const extension = mimeType.split('/')[1] || 'jpg';
+  const path = `${userId}/thumbnails/${originalId}_thumb.${extension}`;
 
-    if (error) {
-      console.error('Error uploading thumbnail:', error);
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      if (attempt > 0) {
+        console.log(`[uploadThumbnail] Retry attempt ${attempt + 1}/${MAX_RETRIES} after ${RETRY_DELAYS[attempt - 1]}ms delay`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt - 1]));
+      }
+
+      const { data, error } = await supabase.storage
+        .from('thumbnails')
+        .upload(path, thumbnailBuffer, {
+          contentType: mimeType,
+          upsert: true,
+        });
+
+      if (error) {
+        // Check if it's a network error that's worth retrying
+        const isNetworkError = error.message?.toLowerCase().includes('fetch failed') ||
+          error.message?.toLowerCase().includes('socket') ||
+          error.message?.toLowerCase().includes('econnreset') ||
+          error.message?.toLowerCase().includes('timeout');
+
+        if (isNetworkError && attempt < MAX_RETRIES - 1) {
+          console.warn(`[uploadThumbnail] Network error on attempt ${attempt + 1}, will retry:`, error.message);
+          continue; // Retry
+        }
+
+        console.error('Error uploading thumbnail:', error);
+        return {
+          success: false,
+          error: error.message,
+        };
+      }
+
+      // Success - get public URL
+      const { data: urlData } = supabase.storage
+        .from('thumbnails')
+        .getPublicUrl(path);
+
+      if (attempt > 0) {
+        console.log(`[uploadThumbnail] Success on retry attempt ${attempt + 1}`);
+      }
+
+      return {
+        success: true,
+        path: data.path,
+        publicUrl: urlData.publicUrl,
+      };
+    } catch (error) {
+      const isNetworkError = error instanceof Error && (
+        error.message?.toLowerCase().includes('fetch failed') ||
+        error.message?.toLowerCase().includes('socket') ||
+        error.message?.toLowerCase().includes('econnreset') ||
+        error.message?.toLowerCase().includes('timeout')
+      );
+
+      if (isNetworkError && attempt < MAX_RETRIES - 1) {
+        console.warn(`[uploadThumbnail] Caught network exception on attempt ${attempt + 1}, will retry:`, error instanceof Error ? error.message : error);
+        continue; // Retry
+      }
+
+      console.error('Error in uploadThumbnail:', error);
       return {
         success: false,
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
-
-    const { data: urlData } = supabase.storage
-      .from('thumbnails')
-      .getPublicUrl(path);
-
-    return {
-      success: true,
-      path: data.path,
-      publicUrl: urlData.publicUrl,
-    };
-  } catch (error) {
-    console.error('Error in uploadThumbnail:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
   }
+
+  // All retries exhausted
+  return {
+    success: false,
+    error: 'Upload failed after maximum retries',
+  };
 }
 
 /**
@@ -350,9 +440,12 @@ export function getStoragePublicUrl(
       bucketName = 'generated-images';
     } else if (path.includes('/downloads/')) {
       bucketName = 'purchased-images';
+    } else if (path.startsWith('user-models/')) {
+      // Custom user models are stored in generated-images bucket
+      bucketName = 'generated-images';
     } else {
-      // Default to thumbnails bucket
-      bucketName = 'thumbnails';
+      // Default to user-uploads bucket for user uploaded files
+      bucketName = 'user-uploads';
     }
   }
 

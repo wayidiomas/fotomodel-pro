@@ -3,19 +3,83 @@
 import * as React from 'react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
-import { WhatsAppShareButton } from './whatsapp-share-button';
+import { createClient } from '@/lib/supabase/client';
 import type { ChatMessage as ChatMessageType } from './chat-interface';
+import { GenerationSkeleton } from './generation-skeleton';
+import { SaveModelModal, SaveModelData } from './save-model-modal';
+import { Bookmark, BookmarkCheck, Sparkles } from 'lucide-react';
+import { Portal } from '@/components/ui/portal';
+import { useToast, ToastContainer } from '@/components/ui/toast';
 
 interface ChatMessageProps {
   message: ChatMessageType;
   userId: string;
+  onImproveRequest?: (imageUrl: string, generationId: string) => void;
 }
 
-export const ChatMessage: React.FC<ChatMessageProps> = ({ message, userId }) => {
+/**
+ * Helper to get the correct image URL from generation results
+ * Handles both full URLs (already complete) and relative paths
+ */
+function getGeneratedImageUrl(imageUrl: string): string {
+  // Already a data URL or full URL - use directly
+  if (
+    imageUrl.startsWith('data:') ||
+    imageUrl.startsWith('http://') ||
+    imageUrl.startsWith('https://')
+  ) {
+    return imageUrl;
+  }
+
+  // Relative path - construct full Supabase URL
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  return `${supabaseUrl}/storage/v1/object/public/generated-images/${imageUrl}`;
+}
+
+export const ChatMessage: React.FC<ChatMessageProps> = ({ message, userId, onImproveRequest }) => {
   const isUser = message.role === 'user';
   const isPlaceholder = message.metadata?.placeholder === 'generation';
   const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
   const [parallaxOffset, setParallaxOffset] = React.useState({ x: 0, y: 0 });
+
+  // Toast notifications
+  const { toasts, addToast, removeToast } = useToast();
+
+  // Prevent body scroll when preview is open
+  React.useEffect(() => {
+    if (isPreviewOpen) {
+      // Save current scroll position
+      const scrollY = window.scrollY;
+
+      // Prevent scroll
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
+
+      return () => {
+        // Restore scroll
+        document.body.style.overflow = '';
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        window.scrollTo(0, scrollY);
+      };
+    }
+  }, [isPreviewOpen]);
+
+  // Like state
+  const [isLiked, setIsLiked] = React.useState(false);
+  const [isLiking, setIsLiking] = React.useState(false);
+
+  // Save model state
+  const [isSavingModel, setIsSavingModel] = React.useState(false);
+  const [isModelSaved, setIsModelSaved] = React.useState(false);
+  const [showSaveModelModal, setShowSaveModelModal] = React.useState(false);
+
+  // Save image state
+  const [isSavingImage, setIsSavingImage] = React.useState(false);
+  const [isImageSaved, setIsImageSaved] = React.useState(false);
 
   // Extract generation result image if exists
   const generationImage = message.generations?.generation_results?.[0];
@@ -31,8 +95,165 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, userId }) => 
     setParallaxOffset({ x: 0, y: 0 });
   }, []);
 
+  // Handle like button click
+  const handleLike = React.useCallback(async () => {
+    if (!generationImage?.id || isLiking) return;
+
+    setIsLiking(true);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        alert('Você precisa estar autenticado');
+        return;
+      }
+
+      if (isLiked) {
+        // Remove like
+        await supabase
+          .from('generation_feedback')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('generation_result_id', generationImage.id);
+        setIsLiked(false);
+      } else {
+        // Add like
+        await supabase
+          .from('generation_feedback')
+          .upsert({
+            user_id: user.id,
+            generation_result_id: generationImage.id,
+            feedback_type: 'like',
+            feedback_text: null,
+          }, {
+            onConflict: 'user_id,generation_result_id',
+          });
+        setIsLiked(true);
+      }
+    } catch (error) {
+      console.error('Error handling like:', error);
+      alert('Erro ao processar feedback. Tente novamente.');
+    } finally {
+      setIsLiking(false);
+    }
+  }, [generationImage?.id, isLiked, isLiking]);
+
+  // Handle save model button click - opens modal
+  const handleSaveModel = React.useCallback(() => {
+    if (!generationImage?.id || isModelSaved) return;
+    setShowSaveModelModal(true);
+  }, [generationImage?.id, isModelSaved]);
+
+  // Handle save model confirmation from modal
+  const handleConfirmSaveModel = React.useCallback(async (data: SaveModelData) => {
+    if (!generationImage?.id) return;
+
+    setIsSavingModel(true);
+    try {
+      const response = await fetch('/api/user-models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          generationResultId: generationImage.id,
+          imageUrl: generationImage.image_url,
+          thumbnailUrl: generationImage.thumbnail_url,
+          modelName: data.modelName,
+          gender: data.gender,
+          ageRange: data.ageRange,
+          heightCm: data.heightCm,
+          weightKg: data.weightKg,
+        }),
+      });
+
+      const responseData = await response.json();
+      if (!response.ok || !responseData.success) {
+        throw new Error(responseData.error || 'Erro ao salvar modelo.');
+      }
+
+      setIsModelSaved(true);
+      setShowSaveModelModal(false); // Close modal automatically
+
+      // Show success toast
+      addToast({
+        type: 'success',
+        title: 'Modelo salvo com sucesso!',
+        description: `"${data.modelName}" foi adicionado aos seus modelos.`,
+        duration: 4000,
+      });
+    } catch (error: any) {
+      console.error('Error saving model:', error);
+
+      // Show error toast
+      addToast({
+        type: 'error',
+        title: 'Erro ao salvar modelo',
+        description: error.message || 'Não foi possível salvar o modelo. Tente novamente.',
+        duration: 5000,
+      });
+
+      throw error;
+    } finally {
+      setIsSavingModel(false);
+    }
+  }, [generationImage, addToast]);
+
+  // Handle save image to gallery
+  const handleSaveImage = React.useCallback(async () => {
+    if (!generationImage?.id || isSavingImage || isImageSaved) return;
+
+    setIsSavingImage(true);
+    try {
+      const response = await fetch('/api/gallery/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          generationResultId: generationImage.id,
+          imageUrl: generationImage.image_url,
+          thumbnailUrl: generationImage.thumbnail_url,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Erro ao salvar imagem.');
+      }
+
+      setIsImageSaved(true);
+
+      // Show success toast
+      addToast({
+        type: 'success',
+        title: 'Imagem salva!',
+        description: 'A imagem foi adicionada à sua galeria.',
+        duration: 4000,
+      });
+    } catch (error: any) {
+      console.error('Error saving image:', error);
+
+      // Show error toast
+      addToast({
+        type: 'error',
+        title: 'Erro ao salvar imagem',
+        description: error.message || 'Não foi possível salvar a imagem. Tente novamente.',
+        duration: 5000,
+      });
+    } finally {
+      setIsSavingImage(false);
+    }
+  }, [generationImage, isSavingImage, isImageSaved, addToast]);
+
+  // Handle improve with AI
+  const handleImprove = React.useCallback(() => {
+    if (!generationImage?.image_url || !message.generation_id) return;
+    onImproveRequest?.(generationImage.image_url, message.generation_id);
+  }, [generationImage, message.generation_id, onImproveRequest]);
+
   React.useEffect(() => {
     if (!isPreviewOpen) return;
+
+    // Prevent body scroll when modal is open
+    document.body.style.overflow = 'hidden';
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -42,8 +263,39 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, userId }) => 
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
   }, [isPreviewOpen, resetParallax]);
+
+  // Load like status on mount
+  React.useEffect(() => {
+    const loadLikeStatus = async () => {
+      if (!generationImage?.id) return;
+
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data } = await supabase
+          .from('generation_feedback')
+          .select('feedback_type')
+          .eq('user_id', user.id)
+          .eq('generation_result_id', generationImage.id)
+          .single();
+
+        if (data?.feedback_type === 'like') {
+          setIsLiked(true);
+        }
+      } catch (error) {
+        // Silently fail - just means no like exists
+      }
+    };
+
+    loadLikeStatus();
+  }, [generationImage?.id]);
 
   return (
     <div
@@ -94,56 +346,46 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, userId }) => 
 
       {/* Message Content */}
       <div className={cn('flex-1 space-y-2', isUser && 'flex flex-col items-end')}>
-        {/* Text Content */}
-        <div
-          className={cn(
-            'rounded-3xl px-5 py-4 shadow-xl border border-white/40 backdrop-blur-lg',
-            isUser
-              ? 'bg-gradient-to-br from-[#20202a] to-[#2a2a35] text-white'
-              : isPlaceholder
-                ? 'bg-white/60 text-gray-700'
+        {/* Text Content - hide when placeholder since GenerationSkeleton shows its own message */}
+        {!isPlaceholder && (
+          <div
+            className={cn(
+              'rounded-3xl px-5 py-4 shadow-xl border border-white/40 backdrop-blur-lg',
+              isUser
+                ? 'bg-gradient-to-br from-[#20202a] to-[#2a2a35] text-white'
                 : 'bg-white/80 text-gray-900'
-          )}
-        >
-          <p className="whitespace-pre-wrap font-inter text-sm leading-relaxed">
-            {message.content}
-          </p>
+            )}
+          >
+            <p className="whitespace-pre-wrap font-inter text-sm leading-relaxed">
+              {message.content}
+            </p>
 
-          {/* Credit Badge */}
-          {message.credits_charged > 0 && (
-            <div className="mt-2 flex items-center gap-1.5 border-t border-gray-200 pt-2">
-              <svg
-                className="h-3.5 w-3.5 text-gray-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <span className="font-inter text-xs text-gray-500">
-                {message.credits_charged} {message.credits_charged === 1 ? 'crédito' : 'créditos'}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Generated Image */}
-        {isPlaceholder && (
-          <div className="max-w-sm overflow-hidden rounded-3xl border border-white/50 bg-white/70 shadow-inner backdrop-blur-md">
-            <div className="relative aspect-[3/4]">
-              <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-gray-200/70 via-white/40 to-gray-100/80" />
-              <div className="absolute inset-8 rounded-2xl border border-dashed border-gray-300/80" />
-              <div className="absolute bottom-4 left-4 rounded-full bg-white/80 px-3 py-1 font-inter text-xs text-gray-600 shadow">
-                Preparando a imagem...
+            {/* Credit Badge */}
+            {message.credits_charged > 0 && (
+              <div className="mt-2 flex items-center gap-1.5 border-t border-gray-200 pt-2">
+                <svg
+                  className="h-3.5 w-3.5 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span className="font-inter text-xs text-gray-500">
+                  {message.credits_charged} {message.credits_charged === 1 ? 'crédito' : 'créditos'}
+                </span>
               </div>
-            </div>
+            )}
           </div>
         )}
+
+        {/* Generation Skeleton - shown when placeholder */}
+        {isPlaceholder && <GenerationSkeleton message={message.content} />}
 
         {generationImage && (
           <div className="max-w-sm overflow-hidden rounded-3xl border border-white/50 bg-white/80 shadow-lg backdrop-blur-xl">
@@ -152,9 +394,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, userId }) => 
               onClick={() => setIsPreviewOpen(true)}
             >
               <Image
-                src={generationImage.image_url.startsWith('data:')
-                  ? generationImage.image_url
-                  : `/api/storage/public/${generationImage.image_url}`}
+                src={getGeneratedImageUrl(generationImage.image_url)}
                 alt="Imagem gerada"
                 fill
                 className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
@@ -170,38 +410,113 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, userId }) => 
                 </div>
               </div>
 
-              {/* Watermark indicator */}
-              {generationImage.has_watermark ? (
-                <div className="absolute bottom-2 right-2 rounded-md bg-black/70 px-2.5 py-1 backdrop-blur-sm text-white text-xs font-inter">
-                  Preview
-                </div>
-              ) : (
-                <div className="absolute bottom-2 right-2 rounded-md bg-[#20202a]/80 px-2.5 py-1 backdrop-blur-sm text-white text-xs font-inter">
-                  Sem marca
-                </div>
-              )}
             </div>
 
             {/* Image Actions */}
             <div className="flex items-center justify-between border-t border-white/60 p-3">
-              <button className="flex items-center gap-1.5 rounded-full border border-white/60 px-3 py-1.5 font-inter text-xs font-medium text-gray-700 transition-colors hover:bg-white/70">
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                  />
-                </svg>
-                Baixar sem marca
+              {/* Melhorar com IA */}
+              <button
+                onClick={handleImprove}
+                className="flex items-center gap-1.5 rounded-full border border-white/60 bg-gradient-to-r from-[#fdf4e3] via-[#f1d9a1] to-[#d3a45d] px-3 py-1.5 font-inter text-xs font-semibold text-[#3f2f1d] transition-all hover:scale-[1.02] active:scale-95 shadow-md"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Melhorar com IA
               </button>
 
-              <WhatsAppShareButton imageUrl={generationImage.image_url} />
+              {/* Like, Save Model & Save Image buttons with glassmorphism */}
+              <div className="flex gap-2 bg-white/80 backdrop-blur-xl rounded-2xl p-2 border border-white/40 shadow-sm">
+                {/* Like */}
+                <button
+                  onClick={handleLike}
+                  disabled={isLiking}
+                  className={cn(
+                    "flex items-center justify-center w-9 h-9 rounded-xl backdrop-blur-sm hover:bg-white/80 active:scale-95 transition-all shadow-sm",
+                    isLiked
+                      ? "bg-red-500/80 hover:bg-red-500/90"
+                      : "bg-white/60"
+                  )}
+                  aria-label="Curtir"
+                  title="Curtir"
+                >
+                  <svg
+                    className={cn("w-4 h-4", isLiked ? "text-white fill-current" : "text-gray-700")}
+                    fill={isLiked ? "currentColor" : "none"}
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                    />
+                  </svg>
+                </button>
+
+                {/* Save Model */}
+                <button
+                  onClick={handleSaveModel}
+                  disabled={isSavingModel || isModelSaved}
+                  className={cn(
+                    "flex items-center justify-center w-9 h-9 rounded-xl backdrop-blur-sm hover:bg-white/80 active:scale-95 transition-all shadow-sm",
+                    isModelSaved
+                      ? "bg-[#20202a]/80 hover:bg-[#20202a]/90"
+                      : "bg-white/60"
+                  )}
+                  aria-label={isModelSaved ? "Modelo salvo" : "Salvar modelo"}
+                  title={isModelSaved ? "Modelo salvo" : "Salvar modelo"}
+                >
+                  {isModelSaved ? (
+                    <BookmarkCheck className="w-4 h-4 text-white" />
+                  ) : (
+                    <Bookmark className="w-4 h-4 text-gray-700" />
+                  )}
+                </button>
+
+                {/* Save Image */}
+                <button
+                  onClick={handleSaveImage}
+                  disabled={isSavingImage || isImageSaved}
+                  className={cn(
+                    "flex items-center justify-center w-9 h-9 rounded-xl backdrop-blur-sm hover:bg-white/80 active:scale-95 transition-all shadow-sm",
+                    isImageSaved
+                      ? "bg-green-500/80 hover:bg-green-500/90"
+                      : "bg-white/60"
+                  )}
+                  aria-label={isImageSaved ? "Imagem salva" : "Salvar imagem"}
+                  title={isImageSaved ? "Imagem salva" : "Salvar imagem"}
+                >
+                  {isImageSaved ? (
+                    <svg
+                      className="w-4 h-4 text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="w-4 h-4 text-gray-700"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
+                      />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -221,48 +536,156 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, userId }) => 
       </div>
 
       {isPreviewOpen && generationImage && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-[radial-gradient(circle_at_top,#ffffff26,transparent_50%),linear-gradient(135deg,rgba(245,246,252,0.65),rgba(13,16,32,0.75))] backdrop-blur-[34px] backdrop-saturate-[165%]"
-          onClick={() => {
-            setIsPreviewOpen(false);
-            resetParallax();
-          }}
-        >
+        <Portal>
           <div
-            className="relative z-10 w-full max-w-5xl rounded-[38px] border border-white/30 bg-white/15 shadow-[0_40px_110px_rgba(7,9,15,0.45)] ring-1 ring-white/30 overflow-hidden transition-transform duration-500 scale-100"
-            style={{ aspectRatio: '3 / 4', maxHeight: '85vh' }}
-            onClick={(event) => event.stopPropagation()}
-            onMouseMove={handleParallaxMove}
-            onMouseLeave={resetParallax}
+            className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
+            onClick={() => {
+              setIsPreviewOpen(false);
+              resetParallax();
+            }}
           >
-            <Image
-              src={generationImage.image_url.startsWith('data:')
-                ? generationImage.image_url
-                : `/api/storage/public/${generationImage.image_url}`}
-              alt="Visualização ampliada"
-              fill
-              className="object-contain transition-transform duration-200 ease-out bg-transparent"
-              style={{
-                transform: `translate3d(${parallaxOffset.x}px, ${parallaxOffset.y}px, 0) scale(1.04)`,
-              }}
-              sizes="(max-width: 1024px) 90vw, 1024px"
-            />
-
-            <button
-              onClick={() => {
-                setIsPreviewOpen(false);
-                resetParallax();
-              }}
-              className="absolute top-5 right-5 rounded-full bg-white/20 text-white w-11 h-11 flex items-center justify-center backdrop-blur-md border border-white/40 transition-all hover:bg-white/30"
-              aria-label="Fechar visualização"
+          {/* Main content wrapper */}
+          <div className="flex h-full items-center justify-center gap-6 px-6 py-8">
+            {/* Image preview */}
+            <div
+              className="relative w-full max-w-3xl rounded-3xl border border-white/20 bg-gradient-to-b from-white/95 to-white/90 shadow-2xl overflow-hidden"
+              style={{ aspectRatio: '3 / 4', maxHeight: '90vh' }}
+              onClick={(event) => event.stopPropagation()}
+              onMouseMove={handleParallaxMove}
+              onMouseLeave={resetParallax}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+              <Image
+                src={getGeneratedImageUrl(generationImage.image_url)}
+                alt="Visualização ampliada"
+                fill
+                className="object-contain transition-transform duration-200 ease-out bg-transparent"
+                style={{
+                  transform: `translate3d(${parallaxOffset.x}px, ${parallaxOffset.y}px, 0) scale(1.04)`,
+                }}
+                sizes="(max-width: 1024px) 90vw, 1024px"
+              />
+
+              <button
+                onClick={() => {
+                  setIsPreviewOpen(false);
+                  resetParallax();
+                }}
+                className="absolute top-4 right-4 rounded-full bg-gray-900/80 text-white w-10 h-10 flex items-center justify-center backdrop-blur-sm border border-gray-800 transition-all hover:bg-gray-900 shadow-lg"
+                aria-label="Fechar visualização"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Sidebar with actions */}
+            <div
+              className="hidden lg:flex flex-col gap-3 p-5 rounded-2xl border border-white/20 bg-white/95 backdrop-blur-lg shadow-xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h3 className="font-inter text-sm font-semibold text-gray-800 mb-1">Ações</h3>
+
+              {/* Melhorar com IA */}
+              <button
+                onClick={() => {
+                  setIsPreviewOpen(false);
+                  resetParallax();
+                  handleImprove();
+                }}
+                className="flex items-center gap-3 rounded-xl border border-[#d3a45d]/30 bg-gradient-to-r from-[#fdf4e3] via-[#f1d9a1] to-[#d3a45d] px-4 py-2.5 font-inter text-sm font-semibold text-[#3f2f1d] transition-all hover:scale-[1.02] active:scale-95 shadow-md"
+              >
+                <Sparkles className="h-4 w-4" />
+                <span>Melhorar com IA</span>
+              </button>
+
+              {/* Like */}
+              <button
+                onClick={handleLike}
+                disabled={isLiking}
+                className={cn(
+                  "flex items-center gap-3 rounded-xl border px-4 py-2.5 font-inter text-sm font-medium transition-all hover:scale-[1.02] active:scale-95 shadow-sm",
+                  isLiked
+                    ? "bg-red-500 text-white border-red-500"
+                    : "bg-white text-gray-700 border-gray-200 hover:border-gray-300"
+                )}
+              >
+                <svg
+                  className={cn("w-4 h-4", isLiked ? "fill-current" : "")}
+                  fill={isLiked ? "currentColor" : "none"}
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                  />
+                </svg>
+                <span>{isLiked ? 'Curtido' : 'Curtir'}</span>
+              </button>
+
+              {/* Save Model */}
+              <button
+                onClick={() => {
+                  setIsPreviewOpen(false);
+                  resetParallax();
+                  handleSaveModel();
+                }}
+                disabled={isSavingModel || isModelSaved}
+                className={cn(
+                  "flex items-center gap-3 rounded-xl border px-4 py-2.5 font-inter text-sm font-medium transition-all hover:scale-[1.02] active:scale-95 shadow-sm",
+                  isModelSaved
+                    ? "bg-[#20202a] text-white border-[#20202a]"
+                    : "bg-white text-gray-700 border-gray-200 hover:border-gray-300"
+                )}
+              >
+                {isModelSaved ? (
+                  <BookmarkCheck className="w-4 h-4" />
+                ) : (
+                  <Bookmark className="w-4 h-4" />
+                )}
+                <span>{isModelSaved ? 'Modelo Salvo' : 'Salvar Modelo'}</span>
+              </button>
+
+              {/* Save Image */}
+              <button
+                onClick={handleSaveImage}
+                disabled={isSavingImage || isImageSaved}
+                className={cn(
+                  "flex items-center gap-3 rounded-xl border px-4 py-2.5 font-inter text-sm font-medium transition-all hover:scale-[1.02] active:scale-95 shadow-sm",
+                  isImageSaved
+                    ? "bg-green-500 text-white border-green-500"
+                    : "bg-white text-gray-700 border-gray-200 hover:border-gray-300"
+                )}
+              >
+                {isImageSaved ? (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                  </svg>
+                )}
+                <span>{isImageSaved ? 'Imagem Salva' : 'Salvar Imagem'}</span>
+              </button>
+            </div>
           </div>
-        </div>
+          </div>
+        </Portal>
       )}
+
+      {/* Save Model Modal */}
+      <SaveModelModal
+        isOpen={showSaveModelModal}
+        onClose={() => setShowSaveModelModal(false)}
+        onConfirm={handleConfirmSaveModel}
+      />
+
+      {/* Toast Notifications */}
+      <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
   );
 };

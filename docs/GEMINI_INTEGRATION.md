@@ -205,7 +205,7 @@ De acordo com o banco de dados (`ai_tools`):
 - **Geração inicial**: Cobrar créditos da ferramenta
 - **Download sem watermark**: +2 créditos adicionais
 - **Regeneração**: Mesmo custo da geração inicial
-- **Novos usuários**: 10 créditos grátis (já implementado)
+- **Novos usuários**: 5 créditos grátis (já implementado)
 
 ---
 

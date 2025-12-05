@@ -4,6 +4,7 @@ import * as React from 'react';
 import Image from 'next/image';
 import type { PoseMetadata } from '@/lib/generation-flow/pose-types';
 import { ModelGenderLabel, PoseCategoryLabel } from '@/lib/generation-flow/pose-types';
+import { getStoragePublicUrl } from '@/lib/storage/upload';
 
 interface PoseCardProps {
   pose: PoseMetadata;
@@ -20,6 +21,21 @@ export const PoseCard: React.FC<PoseCardProps> = ({
   onSelect,
   onViewDetails,
 }) => {
+  // Resolve storage paths to full URLs
+  const resolvedImageUrl = React.useMemo(() => {
+    if (!pose.imageUrl) return '';
+    // If already a full URL, return as-is
+    if (pose.imageUrl.startsWith('http://') || pose.imageUrl.startsWith('https://')) {
+      return pose.imageUrl;
+    }
+    // If starts with /, it's a local asset
+    if (pose.imageUrl.startsWith('/')) {
+      return pose.imageUrl;
+    }
+    // Otherwise, resolve from storage
+    return getStoragePublicUrl(pose.imageUrl) || pose.imageUrl;
+  }, [pose.imageUrl]);
+
   return (
     <div
       onClick={() => onSelect(pose.id)}
@@ -42,7 +58,7 @@ export const PoseCard: React.FC<PoseCardProps> = ({
           </div>
         )}
         <Image
-          src={pose.imageUrl}
+          src={resolvedImageUrl}
           alt={pose.name || 'Model pose'}
           fill
           className="object-cover transition-transform duration-300 group-hover:scale-105"

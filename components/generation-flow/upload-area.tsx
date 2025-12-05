@@ -276,7 +276,7 @@ export const UploadArea: React.FC<UploadAreaProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col">
           <p className="font-inter text-xs uppercase tracking-[0.2em] text-[#6b7280]">Passo 1</p>
-          <p className="font-inter text-lg font-semibold text-[#111827]">
+          <p className="font-freight font-medium text-xl text-[#111827]">
             {uploads.length > 0 ? 'Ótimo! Continue ajustando as peças' : 'Fotografe ou faça upload da peça'}
           </p>
         </div>
@@ -317,7 +317,7 @@ export const UploadArea: React.FC<UploadAreaProps> = ({
                 <IconifyPants className="h-12 w-12 text-[#20202a]" size={48} />
               ))}
               <div>
-                <p className="font-inter text-base font-semibold text-[#111827]">
+                <p className="font-freight font-medium text-lg text-[#111827]">
                   {pickerPieceType === 'upper' ? 'Adicionar peça de cima' : 'Adicionar peça de baixo'}
                 </p>
                 <p className="font-inter text-sm text-gray-500">Escolha a origem da imagem</p>

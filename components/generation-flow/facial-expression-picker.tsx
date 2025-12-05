@@ -12,8 +12,8 @@ export interface FacialExpression {
   imagePath: string;
 }
 
-// Default expression options (matches seed data)
-export const DEFAULT_EXPRESSIONS: FacialExpression[] = [
+// Default expression options for female (matches seed data)
+export const DEFAULT_EXPRESSIONS_FEMALE: FacialExpression[] = [
   {
     value: 'smiling',
     label: 'Sorrindo',
@@ -52,23 +52,71 @@ export const DEFAULT_EXPRESSIONS: FacialExpression[] = [
   },
 ];
 
+// Default expression options for male
+export const DEFAULT_EXPRESSIONS_MALE: FacialExpression[] = [
+  {
+    value: 'smiling',
+    label: 'Sorrindo',
+    description: 'Expressão alegre e acolhedora',
+    imagePath: '/assets/images/expressions/smilling_men.png'
+  },
+  {
+    value: 'serious',
+    label: 'Sério',
+    description: 'Expressão profissional e neutra',
+    imagePath: '/assets/images/expressions/serious_men.png'
+  },
+  {
+    value: 'confident',
+    label: 'Confiante',
+    description: 'Expressão forte e assertiva',
+    imagePath: '/assets/images/expressions/confident_men.png'
+  },
+  {
+    value: 'sensual',
+    label: 'Sensual',
+    description: 'Expressão sedutora e envolvente',
+    imagePath: '/assets/images/expressions/sensual_men.png'
+  },
+  {
+    value: 'relaxed',
+    label: 'Relaxado',
+    description: 'Expressão calma e tranquila',
+    imagePath: '/assets/images/expressions/relaxed_men.png'
+  },
+  {
+    value: 'elegant',
+    label: 'Elegante',
+    description: 'Expressão sofisticada',
+    imagePath: '/assets/images/expressions/elegant_men.png'
+  },
+];
+
+// Legacy export for backwards compatibility
+export const DEFAULT_EXPRESSIONS = DEFAULT_EXPRESSIONS_FEMALE;
+
 interface FacialExpressionPickerProps {
   value: string | null;
   onChange: (value: string | null) => void;
   expressions?: FacialExpression[];
+  gender?: 'MALE' | 'FEMALE' | null;
   className?: string;
 }
 
 /**
  * Component for selecting facial expression
  * Displays as a grid of selectable buttons (2x3 layout)
+ * Switches between male/female images based on gender prop
  */
 export function FacialExpressionPicker({
   value,
   onChange,
-  expressions = DEFAULT_EXPRESSIONS,
+  expressions,
+  gender = 'FEMALE',
   className,
 }: FacialExpressionPickerProps) {
+  // Use gender-specific expressions if no custom expressions provided
+  const displayExpressions = expressions || (gender === 'MALE' ? DEFAULT_EXPRESSIONS_MALE : DEFAULT_EXPRESSIONS_FEMALE);
   const handleSelect = (expressionValue: string) => {
     // Toggle: if already selected, deselect
     if (value === expressionValue) {
@@ -99,9 +147,9 @@ export function FacialExpressionPicker({
         Escolha a expressão facial para a modelo (opcional)
       </p>
 
-      {/* Grid of expression buttons */}
-      <div className="grid grid-cols-3 gap-4 md:gap-6">
-        {expressions.map((expression) => {
+      {/* Grid of expression buttons - single row of 6 */}
+      <div className="grid grid-cols-6 gap-3 md:gap-4">
+        {displayExpressions.map((expression) => {
           const isSelected = value === expression.value;
 
           return (
@@ -110,7 +158,7 @@ export function FacialExpressionPicker({
               onClick={() => handleSelect(expression.value)}
               type="button"
               className={cn(
-                'relative rounded-2xl overflow-hidden',
+                'relative rounded-xl overflow-hidden',
                 'transition-all duration-300 ease-out',
                 'focus:outline-none focus-visible:ring-4 focus-visible:ring-[#20202a]/20',
                 'active:scale-[0.98]',
@@ -128,7 +176,7 @@ export function FacialExpressionPicker({
               )}
             >
               {/* Expression Image */}
-              <div className="relative aspect-square w-full">
+              <div className="relative aspect-[2/3] w-full">
                 <Image
                   src={expression.imagePath}
                   alt={expression.label}
@@ -197,7 +245,7 @@ export function FacialExpressionPicker({
       {value && (
         <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
           <p className="font-inter text-xs text-gray-600">
-            {expressions.find((e) => e.value === value)?.description || ''}
+            {displayExpressions.find((e) => e.value === value)?.description || ''}
           </p>
         </div>
       )}

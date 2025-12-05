@@ -4,14 +4,20 @@
 -- Function to handle new user creation in auth.users
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  free_plan_id UUID;
 BEGIN
+  -- Get the free plan ID
+  SELECT id INTO free_plan_id FROM subscription_plans WHERE slug = 'free' LIMIT 1;
+
   -- Insert into public.users only if the user doesn't already exist
-  INSERT INTO public.users (id, email, phone, credits, created_at, updated_at)
+  INSERT INTO public.users (id, email, phone, credits, current_plan_id, created_at, updated_at)
   VALUES (
     NEW.id,
     NEW.email,
     NEW.phone,
-    10,  -- Give 10 initial credits to new users
+    5,  -- Give 5 initial credits to new users
+    free_plan_id,  -- Assign free plan by default
     NOW(),
     NOW()
   )

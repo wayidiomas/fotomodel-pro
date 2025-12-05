@@ -2,10 +2,14 @@
 
 import * as React from 'react';
 import type { AIToolsSelection } from '@/components/generation-flow/ai-tools-panel';
+import type { ModelCharacteristics } from '@/components/chat/model-characteristics-selector';
 
 const STORAGE_KEY = 'fotomodel_customization';
 
 export interface CustomizationData {
+  // Model characteristics (gender, age, body size)
+  modelCharacteristics: ModelCharacteristics;
+
   // Physical attributes
   height: number; // cm
   weight: number; // kg
@@ -29,6 +33,10 @@ export interface CustomizationData {
 export interface UseCustomizationReturn {
   // State
   customization: CustomizationData;
+
+  // Model characteristics
+  modelCharacteristics: ModelCharacteristics;
+  setModelCharacteristics: (value: ModelCharacteristics) => void;
 
   // Height
   height: number;
@@ -81,9 +89,11 @@ const DEFAULT_AI_TOOLS: AIToolsSelection = {
 
 const DEFAULT_HEIGHT = 170; // cm
 const DEFAULT_WEIGHT = 60; // kg
+const DEFAULT_MODEL_CHARACTERISTICS: ModelCharacteristics = {};
 
 /**
  * Hook to manage model customization state
+ * - Manages model characteristics (gender, age, body size)
  * - Manages physical attributes (height, weight)
  * - Manages facial expression
  * - Manages AI editing tools
@@ -91,6 +101,7 @@ const DEFAULT_WEIGHT = 60; // kg
  */
 export function useCustomization(uploadIds: string[], totalSections = 5): UseCustomizationReturn {
   const maxSectionIndex = Math.max(0, totalSections - 1);
+  const [modelCharacteristics, setModelCharacteristicsState] = React.useState<ModelCharacteristics>(DEFAULT_MODEL_CHARACTERISTICS);
   const [height, setHeightState] = React.useState(DEFAULT_HEIGHT);
   const [weight, setWeightState] = React.useState(DEFAULT_WEIGHT);
   const [facialExpression, setFacialExpressionState] = React.useState<string | null>(null);
@@ -111,6 +122,7 @@ export function useCustomization(uploadIds: string[], totalSections = 5): UseCus
           parsed.uploadIds &&
           JSON.stringify(parsed.uploadIds.sort()) === JSON.stringify(uploadIds.sort())
         ) {
+          setModelCharacteristicsState(parsed.modelCharacteristics || DEFAULT_MODEL_CHARACTERISTICS);
           setHeightState(parsed.height || DEFAULT_HEIGHT);
           setWeightState(parsed.weight || DEFAULT_WEIGHT);
           setFacialExpressionState(parsed.facialExpression || null);
@@ -128,6 +140,7 @@ export function useCustomization(uploadIds: string[], totalSections = 5): UseCus
   React.useEffect(() => {
     try {
       const data: CustomizationData = {
+        modelCharacteristics,
         height,
         weight,
         facialExpression,
@@ -140,7 +153,11 @@ export function useCustomization(uploadIds: string[], totalSections = 5): UseCus
     } catch (error) {
       console.error('Error saving customization to localStorage:', error);
     }
-  }, [height, weight, facialExpression, hairColor, selectedFormat, aiTools, uploadIds]);
+  }, [modelCharacteristics, height, weight, facialExpression, hairColor, selectedFormat, aiTools, uploadIds]);
+
+  const setModelCharacteristics = React.useCallback((value: ModelCharacteristics) => {
+    setModelCharacteristicsState(value);
+  }, []);
 
   const setHeight = React.useCallback((value: number) => {
     setHeightState(Math.max(60, Math.min(220, value)));
@@ -184,6 +201,7 @@ export function useCustomization(uploadIds: string[], totalSections = 5): UseCus
   }, []);
 
   const resetCustomization = React.useCallback(() => {
+    setModelCharacteristicsState(DEFAULT_MODEL_CHARACTERISTICS);
     setHeightState(DEFAULT_HEIGHT);
     setWeightState(DEFAULT_WEIGHT);
     setFacialExpressionState(null);
@@ -195,6 +213,7 @@ export function useCustomization(uploadIds: string[], totalSections = 5): UseCus
 
   const saveCustomization = React.useCallback((): CustomizationData => {
     return {
+      modelCharacteristics,
       height,
       weight,
       facialExpression,
@@ -203,10 +222,14 @@ export function useCustomization(uploadIds: string[], totalSections = 5): UseCus
       aiTools,
       uploadIds,
     };
-  }, [height, weight, facialExpression, hairColor, selectedFormat, aiTools, uploadIds]);
+  }, [modelCharacteristics, height, weight, facialExpression, hairColor, selectedFormat, aiTools, uploadIds]);
 
   // Check if user has made any customizations
   const hasAnyCustomization = React.useMemo(() => {
+    const hasModelCharacteristics =
+      modelCharacteristics.gender !== undefined ||
+      modelCharacteristics.ageRange !== undefined ||
+      modelCharacteristics.bodySize !== undefined;
     const hasPhysicalChanges = height !== DEFAULT_HEIGHT || weight !== DEFAULT_WEIGHT;
     const hasExpression = facialExpression !== null;
     const hasHairColor = hairColor !== null;
@@ -216,11 +239,12 @@ export function useCustomization(uploadIds: string[], totalSections = 5): UseCus
       aiTools.changeBackground.enabled ||
       aiTools.addLogo.enabled;
 
-    return hasPhysicalChanges || hasExpression || hasHairColor || hasFormat || hasAITools;
-  }, [height, weight, facialExpression, hairColor, selectedFormat, aiTools]);
+    return hasModelCharacteristics || hasPhysicalChanges || hasExpression || hasHairColor || hasFormat || hasAITools;
+  }, [modelCharacteristics, height, weight, facialExpression, hairColor, selectedFormat, aiTools]);
 
   return {
     customization: {
+      modelCharacteristics,
       height,
       weight,
       facialExpression,
@@ -229,6 +253,8 @@ export function useCustomization(uploadIds: string[], totalSections = 5): UseCus
       aiTools,
       uploadIds,
     },
+    modelCharacteristics,
+    setModelCharacteristics,
     height,
     setHeight,
     weight,

@@ -8,6 +8,7 @@ import {
   PoseCategoryLabel,
   ModelEthnicityLabel,
 } from '@/lib/generation-flow/pose-types';
+import { getStoragePublicUrl } from '@/lib/storage/upload';
 
 interface PoseDetailModalProps {
   pose: PoseMetadata | null;
@@ -43,6 +44,21 @@ export const PoseDetailModal: React.FC<PoseDetailModalProps> = ({
       document.body.style.overflow = '';
     };
   }, [isOpen, onClose]);
+
+  // Resolve storage paths to full URLs
+  const resolvedImageUrl = React.useMemo(() => {
+    if (!pose?.imageUrl) return '';
+    // If already a full URL, return as-is
+    if (pose.imageUrl.startsWith('http://') || pose.imageUrl.startsWith('https://')) {
+      return pose.imageUrl;
+    }
+    // If starts with /, it's a local asset
+    if (pose.imageUrl.startsWith('/')) {
+      return pose.imageUrl;
+    }
+    // Otherwise, resolve from storage
+    return getStoragePublicUrl(pose.imageUrl) || pose.imageUrl;
+  }, [pose?.imageUrl]);
 
   if (!isOpen || !pose) {
     return null;
@@ -89,7 +105,7 @@ export const PoseDetailModal: React.FC<PoseDetailModalProps> = ({
             {/* Image section */}
             <div className="relative aspect-[3/4] md:aspect-auto md:min-h-[600px] bg-gradient-to-br from-gray-100 to-gray-50">
               <Image
-                src={pose.imageUrl}
+                src={resolvedImageUrl}
                 alt={pose.name || 'Model pose'}
                 fill
                 className="object-cover"
@@ -123,7 +139,7 @@ export const PoseDetailModal: React.FC<PoseDetailModalProps> = ({
             <div className="flex flex-col p-6 md:p-8">
               {/* Header */}
               <div className="mb-6">
-                <h2 className="font-inter font-bold text-2xl text-[#111827] mb-2">
+                <h2 className="font-freight font-medium text-2xl text-[#111827] mb-2">
                   {pose.name || 'Sem nome'}
                 </h2>
                 {pose.description && (
@@ -266,10 +282,9 @@ export const PoseDetailModal: React.FC<PoseDetailModalProps> = ({
                   className={`
                     w-full px-6 py-3.5 rounded-xl font-inter font-semibold text-base
                     transition-all duration-200
-                    ${
-                      isSelected
-                        ? 'bg-white text-[#20202a] border-2 border-[#20202a] hover:bg-gray-50'
-                        : 'bg-[#20202a] text-white hover:bg-[#2a2a34] shadow-lg'
+                    ${isSelected
+                      ? 'bg-white text-[#20202a] border-2 border-[#20202a] hover:bg-gray-50'
+                      : 'bg-[#20202a] text-white hover:bg-[#2a2a34] shadow-lg'
                     }
                   `}
                 >

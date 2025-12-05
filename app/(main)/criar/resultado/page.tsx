@@ -124,21 +124,19 @@ function ResultadoContent() {
   const [dailyDislikeCount, setDailyDislikeCount] = React.useState(0);
   const [dailyDislikeLimit] = React.useState(3);
 
-  // AI Improvement state management
-  const [showAIImprovementModal, setShowAIImprovementModal] = React.useState(false);
-  const [selectedResultForImprovement, setSelectedResultForImprovement] = React.useState<string | null>(null);
+  // Feedback state management (for dislike modal)
   const [feedbackTextValue, setFeedbackTextValue] = React.useState('');
   const [feedbackError, setFeedbackError] = React.useState<string | null>(null);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = React.useState(false);
-  const [improvementTextValue, setImprovementTextValue] = React.useState('');
-  const [improvementError, setImprovementError] = React.useState<string | null>(null);
-  const [isSubmittingImprovement, setIsSubmittingImprovement] = React.useState(false);
   const [regeneratingResultId, setRegeneratingResultId] = React.useState<string | null>(null);
 
   // Image loading & download state
   const [loadingImages, setLoadingImages] = React.useState<Set<string>>(new Set());
   const [loadedImages, setLoadedImages] = React.useState<Set<string>>(new Set());
   const [downloadingResultId, setDownloadingResultId] = React.useState<string | null>(null);
+
+  // Image zoom modal state
+  const [zoomedImageUrl, setZoomedImageUrl] = React.useState<string | null>(null);
 
   // Save model state
   const [isSaveModelModalOpen, setIsSaveModelModalOpen] = React.useState(false);
@@ -151,6 +149,26 @@ function ResultadoContent() {
   const [poseSelectionId, setPoseSelectionId] = React.useState<string | null>(null);
   const [userId, setUserId] = React.useState<string | null>(null);
   const [savedModelResultIds, setSavedModelResultIds] = React.useState<Set<string>>(new Set());
+
+  // Handle ESC key to close zoom modal and prevent body scroll
+  React.useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && zoomedImageUrl) {
+        setZoomedImageUrl(null);
+      }
+    };
+
+    if (zoomedImageUrl) {
+      // Prevent body scroll when modal is open
+      document.body.style.overflow = 'hidden';
+      document.addEventListener('keydown', handleEscape);
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [zoomedImageUrl]);
 
   // Load user credits
   React.useEffect(() => {
@@ -209,6 +227,7 @@ function ResultadoContent() {
 
         if (data) {
           setCustomization({
+            modelCharacteristics: (data.metadata as any)?.model_characteristics || {},
             height: data.model_height_cm || 170,
             weight: data.model_weight_kg || 60,
             facialExpression: data.facial_expression,
@@ -386,10 +405,11 @@ function ResultadoContent() {
     router.push('/criar');
   };
 
-  const handleGenerate = React.useCallback(async (options?: { keepExisting?: boolean; regenerationReason?: 'feedback' | 'improvement' }) => {
+  const handleGenerate = React.useCallback(async (options?: { keepExisting?: boolean; regenerationReason?: 'feedback' | 'improvement'; improvementText?: string }) => {
     try {
       const keepExisting = options?.keepExisting;
       const regenerationReason = options?.regenerationReason;
+      const improvementText = options?.improvementText;
 
       setIsGenerating(true);
       setError(null);
@@ -413,6 +433,10 @@ function ResultadoContent() {
       const requestPayload: Record<string, any> = { uploadIds };
       if (regenerationReason) {
         requestPayload.regenerationType = regenerationReason;
+      }
+      // Pass improvement text for image_edit mode prompt optimization
+      if (improvementText && improvementText.trim()) {
+        requestPayload.improvementText = improvementText.trim();
       }
 
       const response = await fetch('/api/ai/generate-image', {
@@ -555,15 +579,10 @@ function ResultadoContent() {
           prev.map((result: any) =>
             result.id === targetResultId
               ? {
-                  ...result,
-                  is_purchased: true,
-                  has_watermark: false,
-                  image_url: data.imageUrl,
-                  metadata: {
-                    ...(result.metadata || {}),
-                    cleanMimeType: mimeType,
-                  },
-                }
+                ...result,
+                is_purchased: true,
+                image_url: data.imageUrl,
+              }
               : result
           )
         );
@@ -572,7 +591,7 @@ function ResultadoContent() {
         setGenerationResults((prev) =>
           prev.map((result: any) =>
             result.id === data.resultId
-              ? { ...result, is_purchased: true, has_watermark: false }
+              ? { ...result, is_purchased: true }
               : result
           )
         );
@@ -587,6 +606,52 @@ function ResultadoContent() {
 
   const handleNewGeneration = () => {
     router.push('/criar');
+  };
+
+  // Redirect to chat with the generated image as a reference for editing
+  const handleEditWithAI = async (result: any) => {
+    try {
+      // Create new conversation
+      const response = await fetch('/api/chat/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Edição de Imagem' }),
+      });
+
+      const data = await response.json();
+      if (!data.success || !data.conversation?.id) {
+        throw new Error('Failed to create conversation');
+      }
+
+      const conversationId = data.conversation.id;
+
+      // Store draft with improve_reference attachment
+      const draft = {
+        message: '',
+        attachments: [{
+          type: 'improve_reference',
+          url: result.image_url,
+          referenceId: result.id,
+          attachedAt: new Date().toISOString(),
+          metadata: {
+            generationId: result.generation_id || result.id,
+            imageUrl: result.image_url,
+            sourceResultId: result.id,
+          },
+        }],
+      };
+
+      const DRAFT_KEY = 'chat:drafts:v1';
+      const drafts = JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}');
+      drafts[conversationId] = draft;
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(drafts));
+
+      // Navigate to chat with conversation selected
+      router.push(`/chat?conversationId=${conversationId}`);
+    } catch (error) {
+      console.error('Error redirecting to chat:', error);
+      alert('Erro ao redirecionar para o chat. Tente novamente.');
+    }
   };
 
   const handleOpenSaveModelModal = React.useCallback(() => {
@@ -617,35 +682,7 @@ function ResultadoContent() {
     setIsSavingModel(true);
 
     try {
-      let cleanImageUrl = targetResult.image_url;
-
-      if (targetResult.has_watermark) {
-        const cleanResponse = await fetch('/api/ai/download-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ resultId: modelSaveResultId }),
-        });
-
-        const cleanData = await cleanResponse.json();
-        if (!cleanResponse.ok || !cleanData.imageUrl) {
-          throw new Error(cleanData.error || 'Não foi possível remover a watermark antes de salvar o modelo.');
-        }
-
-        cleanImageUrl = cleanData.imageUrl;
-
-        setGenerationResults((prev) =>
-          prev.map((result) =>
-            result.id === modelSaveResultId
-              ? {
-                  ...result,
-                  image_url: cleanData.imageUrl,
-                  has_watermark: false,
-                  is_purchased: true,
-                }
-              : result
-          )
-        );
-      }
+      const cleanImageUrl = targetResult.image_url;
 
       const response = await fetch('/api/user-models', {
         method: 'POST',
@@ -830,7 +867,7 @@ function ResultadoContent() {
   const hasAnySavedModel = generationResults.some(result => savedModelResultIds.has(result.id));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
+    <div className="min-h-screen bg-gradient-to-br from-[#fdfbf7] via-[#fff] to-[#f7f4ef]">
       <MainHeader currentPage="criar" credits={userCredits} />
 
       <ProgressSteps
@@ -842,13 +879,12 @@ function ResultadoContent() {
               type="button"
               onClick={hasAnySavedModel ? undefined : handleOpenSaveModelModal}
               disabled={isSavingModel || hasAnySavedModel}
-              className={`rounded-xl px-4 py-2 text-sm font-semibold transition-all shadow-sm flex items-center gap-2 ${
-                isSavingModel
-                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                  : hasAnySavedModel
+              className={`rounded-xl px-4 py-2 text-sm font-semibold transition-all shadow-sm flex items-center gap-2 ${isSavingModel
+                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                : hasAnySavedModel
                   ? 'bg-green-500/90 text-white cursor-default'
                   : 'bg-[#20202a] text-white hover:bg-[#2c2c38] active:scale-95'
-              }`}
+                }`}
             >
               {hasAnySavedModel ? (
                 <svg
@@ -909,82 +945,120 @@ function ResultadoContent() {
           </div>
         )}
 
-        {/* Generating State - Enhanced Glassmorphic with Advanced Animations */}
+        {/* Generating State - Elegant Glassmorphic Design */}
         {isGenerating && (
-          <div className="flex flex-col items-center justify-center min-h-[600px] relative">
-            {/* Main Preview Area with Enhanced Loading Animation */}
-            <div className="relative w-full max-w-2xl max-h-[70vh] aspect-[3/4] bg-white/60 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/40 overflow-hidden">
+          <div className="flex flex-col items-center justify-center min-h-[500px] py-8 relative">
+            {/* Expanded Card with Integrated Content */}
+            <div className="relative w-full max-w-lg bg-white/70 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/50 overflow-hidden">
               {/* Animated Gradient Background */}
-              <div className="absolute inset-0 bg-gradient-to-br from-gray-50/30 via-gray-100/20 to-gray-50/30 animate-pulse" />
+              <div className="absolute inset-0 bg-gradient-to-br from-[#faf6ef]/50 via-white/40 to-[#f5ebe0]/50" />
 
               {/* Shimmer Effect */}
               <div className="absolute inset-0 overflow-hidden">
-                <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/30 to-transparent" />
               </div>
 
-              {/* Center Content with Multiple AI Icons */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="relative">
-                  {/* Outer Ring Pulse */}
-                  <div className="absolute inset-0 -m-12 rounded-full border-2 border-gray-500/20 animate-ping" />
-                  <div className="absolute inset-0 -m-8 rounded-full border-2 border-gray-600/30 animate-pulse" />
-
-                  {/* Main AI Sparkle Icon with Enhanced Animation */}
+              {/* Main Content Area */}
+              <div className="relative z-10 p-10">
+                {/* Center Icon with Animations */}
+                <div className="flex items-center justify-center mb-8">
                   <div className="relative">
-                    <div className="absolute inset-0 bg-gradient-to-r from-[#c19044]/20 to-[#f4d9a3]/20 rounded-full blur-3xl animate-pulse" />
-                    <svg className="w-20 h-20 text-[#c19044] relative z-10 animate-pulse" fill="none" viewBox="0 0 24 24">
-                      <path
-                        stroke="currentColor"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1.5}
-                        d="M12 3L13.5 7.5L18 9L13.5 10.5L12 15L10.5 10.5L6 9L10.5 7.5L12 3Z"
-                        className="animate-pulse"
-                      />
-                      <path
-                        stroke="currentColor"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1.5}
-                        d="M19 4L19.5 5.5L21 6L19.5 6.5L19 8L18.5 6.5L17 6L18.5 5.5L19 4Z"
-                      />
-                      <path
-                        stroke="currentColor"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1.5}
-                        d="M19 16L19.5 17.5L21 18L19.5 18.5L19 20L18.5 18.5L17 18L18.5 17.5L19 16Z"
-                      />
-                    </svg>
-                  </div>
+                    {/* Outer Rings */}
+                    <div className="absolute inset-0 -m-12 rounded-full border border-[#c19044]/10 animate-[ping_3s_cubic-bezier(0,0,0.2,1)_infinite]" />
+                    <div className="absolute inset-0 -m-8 rounded-full border border-[#c19044]/20 animate-[ping_2s_cubic-bezier(0,0,0.2,1)_infinite]" />
 
-                  {/* Floating Mini Sparkles */}
-                  <div className="absolute -top-6 -left-6 animate-bounce" style={{ animationDelay: '0.5s', animationDuration: '2s' }}>
-                    <svg className="w-6 h-6 text-[#d8b36b]/60" fill="none" viewBox="0 0 24 24">
-                      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3L13 7L17 8L13 9L12 13L11 9L7 8L11 7L12 3Z" />
-                    </svg>
+                    {/* Glow Effect */}
+                    <div className="absolute inset-0 -m-4 bg-gradient-to-r from-[#c19044]/10 to-[#f4d9a3]/10 rounded-full blur-3xl animate-pulse" />
+
+                    {/* Main Icon */}
+                    <div className="relative w-20 h-20 rounded-full bg-gradient-to-br from-[#c19044] to-[#a67a30] flex items-center justify-center shadow-xl ring-4 ring-white/50">
+                      <svg className="w-10 h-10 text-white animate-pulse" fill="none" viewBox="0 0 24 24">
+                        <path
+                          stroke="currentColor"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1.5}
+                          d="M12 3L13.5 7.5L18 9L13.5 10.5L12 15L10.5 10.5L6 9L10.5 7.5L12 3Z"
+                        />
+                        <path
+                          stroke="currentColor"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1.5}
+                          d="M19 4L19.5 5.5L21 6L19.5 6.5L19 8L18.5 6.5L17 6L18.5 5.5L19 4Z"
+                        />
+                      </svg>
+                    </div>
+
+                    {/* Floating Mini Sparkles */}
+                    <div className="absolute -top-6 -left-6 animate-bounce" style={{ animationDelay: '0.5s', animationDuration: '3s' }}>
+                      <svg className="w-5 h-5 text-[#d8b36b]/60" fill="none" viewBox="0 0 24 24">
+                        <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3L13 7L17 8L13 9L12 13L11 9L7 8L11 7L12 3Z" />
+                      </svg>
+                    </div>
+                    <div className="absolute -bottom-4 -right-6 animate-bounce" style={{ animationDelay: '1.5s', animationDuration: '3.5s' }}>
+                      <svg className="w-4 h-4 text-[#bd8e45]/60" fill="none" viewBox="0 0 24 24">
+                        <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3L13 7L17 8L13 9L12 13L11 9L7 8L11 7L12 3Z" />
+                      </svg>
+                    </div>
                   </div>
-                  <div className="absolute -bottom-6 -right-6 animate-bounce" style={{ animationDelay: '1s', animationDuration: '2.5s' }}>
-                    <svg className="w-6 h-6 text-[#bd8e45]/60" fill="none" viewBox="0 0 24 24">
-                      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3L13 7L17 8L13 9L12 13L11 9L7 8L11 7L12 3Z" />
-                    </svg>
+                </div>
+
+                {/* Text Content */}
+                <div className="text-center mb-8">
+                  <h2 className="font-freight text-3xl font-medium text-gray-900 mb-3 flex items-center gap-3 justify-center">
+                    <span>Gerando sua imagem</span>
+                    <span className="inline-flex gap-1 mt-1">
+                      <span className="w-1.5 h-1.5 bg-[#d8b36b] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 bg-[#bd8e45] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 bg-[#8a5a2d] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </span>
+                  </h2>
+                  <p className="font-inter text-base text-gray-500">
+                    Isso pode levar alguns segundos
+                  </p>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="w-full h-1 bg-gray-200/50 rounded-full overflow-hidden mb-8">
+                  <div className="h-full bg-gradient-to-r from-[#b67c34] via-[#e6c07c] to-[#b67c34] rounded-full animate-[shimmer_2s_infinite]" style={{ width: '100%', backgroundSize: '200% 100%' }} />
+                </div>
+
+                {/* Process Steps */}
+                <div className="flex items-center justify-center gap-6 text-sm">
+                  <div className="flex items-center gap-2 text-[#8a5a2d]">
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#c19244] to-[#a8732d] flex items-center justify-center shadow-sm">
+                      <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <span className="font-medium">Analisando</span>
                   </div>
-                  <div className="absolute top-0 -right-8 animate-bounce" style={{ animationDelay: '0.3s', animationDuration: '1.8s' }}>
-                    <svg className="w-5 h-5 text-[#8a5a2d]/60" fill="none" viewBox="0 0 24 24">
-                      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3L13 7L17 8L13 9L12 13L11 9L7 8L11 7L12 3Z" />
-                    </svg>
+                  <div className="w-8 h-px bg-gradient-to-r from-[#c19244] to-[#d8b36b]" />
+                  <div className="flex items-center gap-2 text-[#c19044]">
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#f1c985] to-[#b67c34] flex items-center justify-center shadow-sm">
+                      <div className="w-2 h-2 bg-white rounded-full animate-ping" />
+                    </div>
+                    <span className="font-medium">Gerando</span>
+                  </div>
+                  <div className="w-8 h-px bg-gray-200" />
+                  <div className="flex items-center gap-2 text-gray-400">
+                    <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center">
+                      <div className="w-2 h-2 bg-gray-300 rounded-full" />
+                    </div>
+                    <span className="font-medium">Pronto</span>
                   </div>
                 </div>
               </div>
 
-              {/* Enhanced Wave Effect with Multiple Layers */}
-              <div className="absolute bottom-0 left-0 right-0 h-40 overflow-hidden">
+              {/* Elegant Wave Effect */}
+              <div className="relative h-20 overflow-hidden opacity-60">
                 {/* Wave Layer 1 */}
-                <svg className="absolute bottom-0 w-full h-32 opacity-20" preserveAspectRatio="none" viewBox="0 0 1440 320">
+                <svg className="absolute bottom-0 w-full h-16 opacity-30" preserveAspectRatio="none" viewBox="0 0 1440 320">
                   <path
                     fill="url(#wave-gradient-1)"
                     d="M0,160L48,149.3C96,139,192,117,288,122.7C384,128,480,160,576,165.3C672,171,768,149,864,133.3C960,117,1056,107,1152,112C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
-                    className="animate-[wave_4s_ease-in-out_infinite]"
+                    className="animate-[wave_6s_ease-in-out_infinite]"
                   />
                   <defs>
                     <linearGradient id="wave-gradient-1" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -995,11 +1069,11 @@ function ResultadoContent() {
                 </svg>
 
                 {/* Wave Layer 2 */}
-                <svg className="absolute bottom-0 w-full h-28 opacity-25" preserveAspectRatio="none" viewBox="0 0 1440 320">
+                <svg className="absolute bottom-0 w-full h-14 opacity-40" preserveAspectRatio="none" viewBox="0 0 1440 320">
                   <path
                     fill="url(#wave-gradient-2)"
                     d="M0,192L48,197.3C96,203,192,213,288,208C384,203,480,181,576,165.3C672,149,768,139,864,149.3C960,160,1056,192,1152,197.3C1248,203,1344,181,1392,170.7L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
-                    className="animate-[wave_3s_ease-in-out_infinite_reverse]"
+                    className="animate-[wave_5s_ease-in-out_infinite_reverse]"
                   />
                   <defs>
                     <linearGradient id="wave-gradient-2" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -1008,75 +1082,6 @@ function ResultadoContent() {
                     </linearGradient>
                   </defs>
                 </svg>
-
-                {/* Wave Layer 3 */}
-                <svg className="absolute bottom-0 w-full h-24 opacity-30" preserveAspectRatio="none" viewBox="0 0 1440 320">
-                  <path
-                    fill="url(#wave-gradient-3)"
-                    d="M0,96L48,112C96,128,192,160,288,165.3C384,171,480,149,576,133.3C672,117,768,107,864,112C960,117,1056,139,1152,138.7C1248,139,1344,117,1392,106.7L1440,96L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
-                    className="animate-[wave_2.5s_ease-in-out_infinite]"
-                  />
-                  <defs>
-                    <linearGradient id="wave-gradient-3" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#a47135" />
-                      <stop offset="100%" stopColor="#f2c87b" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-              </div>
-            </div>
-
-            {/* Enhanced Loading Text with Progress Indicator */}
-            <div className="mt-8 text-center max-w-md">
-              <h2 className="font-inter text-2xl font-semibold text-gray-900 mb-3 flex items-center gap-2 justify-center">
-                <span className="text-[#20202a]">
-                  Gerando os melhores resultados
-                </span>
-                <span className="inline-flex gap-1">
-                  <span className="w-2 h-2 bg-[#d8b36b] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-2 h-2 bg-[#bd8e45] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-2 h-2 bg-[#8a5a2d] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                </span>
-              </h2>
-              <p className="font-inter text-sm text-gray-600 mb-4">
-                Nossa IA está criando a modelo perfeita para você
-              </p>
-
-              {/* Progress Bar */}
-              <div className="w-full h-1.5 bg-white/40 rounded-full overflow-hidden backdrop-blur-sm border border-[#f1d7a6]/40">
-                <div className="h-full bg-gradient-to-r from-[#b67c34] via-[#e6c07c] to-[#f4dfba] rounded-full animate-[shimmer_1.5s_infinite]" style={{ width: '100%' }} />
-              </div>
-
-              {/* Process Steps */}
-              <div className="mt-6 grid grid-cols-3 gap-3 text-xs text-gray-500">
-                <div className="bg-white/60 backdrop-blur-lg rounded-lg p-2 border border-[#f4d9a3]/40 shadow-[0_10px_30px_rgba(210,173,108,0.15)]">
-                  <div className="flex items-center justify-center mb-1">
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#c19244] to-[#a8732d] flex items-center justify-center">
-                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                  </div>
-                  <p className="font-medium">Analisando</p>
-                </div>
-                <div className="bg-white/60 backdrop-blur-lg rounded-lg p-2 border border-[#f8e7c5]/40 animate-pulse shadow-[0_10px_30px_rgba(210,173,108,0.12)]">
-                  <div className="flex items-center justify-center mb-1">
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#f1c985] to-[#b67c34] flex items-center justify-center">
-                      <div className="w-2 h-2 bg-white rounded-full animate-ping opacity-80" />
-                    </div>
-                  </div>
-                  <p className="font-medium">Gerando</p>
-                </div>
-                <div className="bg-white/40 backdrop-blur-lg rounded-lg p-2 border border-[#f1d7a6]/30">
-                  <div className="flex items-center justify-center mb-1">
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#f7d8a9] to-[#c49541] flex items-center justify-center">
-                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                    </div>
-                  </div>
-                  <p className="font-medium">Finalizando</p>
-                </div>
               </div>
             </div>
           </div>
@@ -1130,26 +1135,37 @@ function ResultadoContent() {
                       </div>
                     )}
 
-                    <Image
-                      src={result.image_url}
-                      alt="Resultado gerado"
-                      fill
-                      className={`object-contain transition-opacity duration-500 ${
-                        loadedImages.has(result.id) ? 'opacity-100' : 'opacity-0'
-                      }`}
-                      priority
-                      onLoadingComplete={() => {
-                        setLoadedImages(prev => new Set([...prev, result.id]));
-                        setLoadingImages(prev => {
-                          const next = new Set(prev);
-                          next.delete(result.id);
-                          return next;
-                        });
+                    <div
+                      className="cursor-zoom-in"
+                      onClick={() => setZoomedImageUrl(result.image_url)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          setZoomedImageUrl(result.image_url);
+                        }
                       }}
-                      onLoad={() => {
-                        setLoadedImages(prev => new Set([...prev, result.id]));
-                      }}
-                    />
+                    >
+                      <Image
+                        src={result.image_url}
+                        alt="Resultado gerado - Clique para ampliar"
+                        fill
+                        className={`object-contain transition-opacity duration-500 ${loadedImages.has(result.id) ? 'opacity-100' : 'opacity-0'
+                          }`}
+                        priority
+                        onLoadingComplete={() => {
+                          setLoadedImages(prev => new Set([...prev, result.id]));
+                          setLoadingImages(prev => {
+                            const next = new Set(prev);
+                            next.delete(result.id);
+                            return next;
+                          });
+                        }}
+                        onLoad={() => {
+                          setLoadedImages(prev => new Set([...prev, result.id]));
+                        }}
+                      />
+                    </div>
 
                     {regeneratingResultId === result.id && (
                       <div className="absolute inset-0 z-20 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center text-gray-900">
@@ -1204,11 +1220,10 @@ function ResultadoContent() {
                       <div className="flex gap-2 bg-white/80 backdrop-blur-xl rounded-2xl p-2 shadow-lg border border-white/40">
                         <button
                           onClick={() => handleLike(result.id)}
-                          className={`flex items-center justify-center w-11 h-11 rounded-xl backdrop-blur-sm hover:bg-white/80 active:scale-95 transition-all shadow-sm ${
-                            likedResults.has(result.id)
-                              ? 'bg-green-500/80 hover:bg-green-500/90'
-                              : 'bg-white/60'
-                          }`}
+                          className={`flex items-center justify-center w-11 h-11 rounded-xl backdrop-blur-sm hover:bg-white/80 active:scale-95 transition-all shadow-sm ${likedResults.has(result.id)
+                            ? 'bg-green-500/80 hover:bg-green-500/90'
+                            : 'bg-white/60'
+                            }`}
                           aria-label="Gostei"
                         >
                           <svg className={`w-5 h-5 ${likedResults.has(result.id) ? 'text-white' : 'text-gray-700'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1218,11 +1233,10 @@ function ResultadoContent() {
 
                         <button
                           onClick={() => handleDislike(result.id)}
-                          className={`flex items-center justify-center w-11 h-11 rounded-xl backdrop-blur-sm hover:bg-white/80 active:scale-95 transition-all shadow-sm ${
-                            dislikedResults.has(result.id)
-                              ? 'bg-red-500/80 hover:bg-red-500/90'
-                              : 'bg-white/60'
-                          }`}
+                          className={`flex items-center justify-center w-11 h-11 rounded-xl backdrop-blur-sm hover:bg-white/80 active:scale-95 transition-all shadow-sm ${dislikedResults.has(result.id)
+                            ? 'bg-red-500/80 hover:bg-red-500/90'
+                            : 'bg-white/60'
+                            }`}
                           aria-label="Não gostei"
                         >
                           <svg className={`w-5 h-5 ${dislikedResults.has(result.id) ? 'text-white' : 'text-gray-700'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1240,7 +1254,7 @@ function ResultadoContent() {
             <div className="space-y-4">
               {/* Header */}
               <div className="space-y-1">
-                <h1 className="font-inter text-2xl font-semibold text-gray-900">
+                <h1 className="font-freight text-2xl font-medium text-gray-900">
                   Imagem Gerada
                 </h1>
                 <p className="font-inter text-sm text-gray-500">
@@ -1290,9 +1304,7 @@ function ResultadoContent() {
               {/* Action Buttons - Glassmorphic */}
               <div className="space-y-4 pt-2">
                 {generationResults.map((result: any) => {
-                  const isClean = result.is_purchased || result.has_watermark === false;
                   const isDownloading = downloadingResultId === result.id;
-                  const isDisabled = isClean || isDownloading;
 
                   return (
                     <div
@@ -1301,13 +1313,12 @@ function ResultadoContent() {
                     >
                       <button
                         onClick={() => handleDownload(result.id)}
-                        disabled={isDisabled}
-                        aria-disabled={isDisabled}
-                        className={`w-full font-inter px-4 py-3.5 bg-gradient-to-r from-[#20202a] to-[#2a2a35] text-white text-[15px] font-medium rounded-2xl shadow-md flex items-center justify-center gap-2 transition-all ${
-                          isDisabled
-                            ? 'opacity-60 cursor-not-allowed'
-                            : 'hover:shadow-lg active:scale-[0.98]'
-                        }`}
+                        disabled={isDownloading}
+                        aria-disabled={isDownloading}
+                        className={`w-full font-inter px-4 py-3.5 bg-gradient-to-r from-[#20202a] to-[#2a2a35] text-white text-[15px] font-medium rounded-2xl shadow-md flex items-center justify-center gap-2 transition-all ${isDownloading
+                          ? 'opacity-60 cursor-not-allowed'
+                          : 'hover:shadow-lg active:scale-[0.98]'
+                          }`}
                       >
                         {isDownloading ? (
                           <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -1332,20 +1343,15 @@ function ResultadoContent() {
                           </svg>
                         )}
                         <span>
-                          {isClean ? "Imagem sem marca d'água" : isDownloading ? 'Liberando imagem...' : "Baixar sem marca d'água"}
+                          {isDownloading ? 'Baixando...' : 'Baixar imagem'}
                         </span>
                       </button>
 
                       <button
-                        onClick={() => {
-                          setSelectedResultForImprovement(result.id);
-                          setImprovementTextValue('');
-                          setImprovementError(null);
-                          setShowAIImprovementModal(true);
-                        }}
+                        onClick={() => handleEditWithAI(result)}
                         className="w-full font-inter px-4 py-3.5 bg-gradient-to-r from-[#fdf4e3] via-[#f1d9a1] to-[#d3a45d] text-[#3f2f1d] text-[15px] font-semibold rounded-2xl hover:shadow-lg active:scale-[0.98] transition-all shadow-md flex items-center justify-center gap-2"
                       >
-                        <svg className="w-5 h-5 animate-pulse text-[#6d4b21]" fill="none" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5 text-[#6d4b21]" fill="none" viewBox="0 0 24 24">
                           <path
                             stroke="currentColor"
                             strokeLinecap="round"
@@ -1361,9 +1367,7 @@ function ResultadoContent() {
                             d="M19 4L19.5 5.5L21 6L19.5 6.5L19 8L18.5 6.5L17 6L18.5 5.5L19 4Z"
                           />
                         </svg>
-                        <span className="font-semibold">Melhore com a IA</span>
-                        <span className="ml-1 text-[#6d4b21]/60">•</span>
-                        <span className="ml-1 text-[#6d4b21] font-semibold">1 crédito</span>
+                        <span className="font-semibold">Editar com IA</span>
                       </button>
                     </div>
                   );
@@ -1548,11 +1552,10 @@ function ResultadoContent() {
                     <button
                       onClick={handleConfirmSaveModel}
                       disabled={isSavingModel || !modelSaveResultId}
-                      className={`rounded-xl px-5 py-2 text-sm font-semibold text-white shadow-lg ${
-                        isSavingModel || !modelSaveResultId
-                          ? 'bg-gray-200 cursor-not-allowed'
-                          : 'bg-[#20202a] hover:bg-[#2c2c38]'
-                      }`}
+                      className={`rounded-xl px-5 py-2 text-sm font-semibold text-white shadow-lg ${isSavingModel || !modelSaveResultId
+                        ? 'bg-gray-200 cursor-not-allowed'
+                        : 'bg-[#20202a] hover:bg-[#2c2c38]'
+                        }`}
                     >
                       {isSavingModel ? 'Salvando...' : 'Confirmar'}
                     </button>
@@ -1689,11 +1692,10 @@ function ResultadoContent() {
                       }
                     }}
                     disabled={isSubmittingFeedback}
-                    className={`flex-1 font-inter px-4 py-3 rounded-2xl text-sm font-medium transition-all ${
-                      isSubmittingFeedback
-                        ? 'bg-gray-400 text-white cursor-not-allowed opacity-80'
-                        : 'bg-gradient-to-r from-[#f8ecda] via-[#e6cda3] to-[#c89a5c] text-[#3f2f1d] hover:shadow-lg active:scale-[0.98]'
-                    }`}
+                    className={`flex-1 font-inter px-4 py-3 rounded-2xl text-sm font-medium transition-all ${isSubmittingFeedback
+                      ? 'bg-gray-400 text-white cursor-not-allowed opacity-80'
+                      : 'bg-gradient-to-r from-[#f8ecda] via-[#e6cda3] to-[#c89a5c] text-[#3f2f1d] hover:shadow-lg active:scale-[0.98]'
+                      }`}
                   >
                     {isSubmittingFeedback ? 'Gerando...' : 'Gerar Nova Imagem (Grátis)'}
                   </button>
@@ -1704,173 +1706,48 @@ function ResultadoContent() {
         </div>
       )}
 
-      {/* AI Improvement Modal - Glassmorphic Modal */}
-      {showAIImprovementModal && selectedResultForImprovement && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/40 p-6 space-y-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="font-inter text-xl font-semibold text-gray-900">
-                  Melhore sua modelo com IA
-                </h3>
-                <p className="font-inter text-sm text-gray-600 mt-1">
-                  Descreva livremente como deseja melhorar
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setShowAIImprovementModal(false);
-                  setSelectedResultForImprovement(null);
-                  setImprovementTextValue('');
-                  setImprovementError(null);
-                }}
-                className="rounded-lg p-2 hover:bg-gray-100/60 transition-colors"
-              >
-                <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
+      {/* Image Zoom Modal */}
+      {zoomedImageUrl && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
+          onClick={() => setZoomedImageUrl(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Imagem ampliada"
+        >
+          <button
+            onClick={() => setZoomedImageUrl(null)}
+            className="absolute top-4 right-4 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white/10 backdrop-blur-xl border border-white/20 text-white hover:bg-white/20 active:scale-95 transition-all"
+            aria-label="Fechar zoom"
+          >
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
 
-            <div className="bg-gradient-to-br from-[#fbf4ea]/80 to-[#f3e0c4]/70 backdrop-blur-sm border border-[#f0e0c8]/60 rounded-2xl p-4">
-              <div className="flex items-center gap-2 text-[#8a6a3f]">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                <p className="font-inter text-sm font-medium">
-                  Esta melhoria custará 1 crédito
-                </p>
-              </div>
-              <p className="font-inter text-xs text-[#a07b46] mt-1">
-                Seus créditos atuais: {userCredits}
-              </p>
-            </div>
+          <div
+            className="relative max-h-[95vh] max-w-[95vw] cursor-zoom-out"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Image
+              src={zoomedImageUrl}
+              alt="Imagem ampliada"
+              width={1200}
+              height={1600}
+              className="h-auto w-auto max-h-[95vh] max-w-[95vw] object-contain rounded-2xl shadow-2xl"
+              priority
+            />
+          </div>
 
-            {userCredits < 1 ? (
-              <div className="bg-red-50/60 backdrop-blur-sm border border-red-200/40 rounded-2xl p-4">
-                <p className="font-inter text-sm text-red-800">
-                  Você não tem créditos suficientes. Por favor, recarregue sua conta.
-                </p>
-              </div>
-            ) : (
-              <>
-                <textarea
-                  placeholder="Ex: Deixar a modelo mais alta, mudar a cor do cabelo para loiro, fazer ela sorrir..."
-                  className="w-full h-32 px-4 py-3 bg-white/60 backdrop-blur-sm border border-gray-200/60 rounded-2xl font-inter text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d8b07c]/60 focus:border-transparent resize-none"
-                  maxLength={500}
-                  value={improvementTextValue}
-                  onChange={(event) => {
-                    setImprovementTextValue(event.target.value);
-                    if (improvementError) setImprovementError(null);
-                  }}
-                />
-                <p className="font-inter text-xs text-gray-500 text-right">
-                  {improvementTextValue.length}/500 caracteres
-                </p>
-
-                {improvementError && (
-                  <p className="font-inter text-sm text-red-600 bg-red-50/80 border border-red-100 rounded-xl px-3 py-2">
-                    {improvementError}
-                  </p>
-                )}
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      setShowAIImprovementModal(false);
-                      setSelectedResultForImprovement(null);
-                      setImprovementTextValue('');
-                      setImprovementError(null);
-                    }}
-                    className="flex-1 font-inter px-4 py-3 bg-white/60 backdrop-blur-sm text-gray-700 text-sm font-medium border border-gray-200/60 rounded-2xl hover:bg-white/80 active:scale-[0.98] transition-all"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!selectedResultForImprovement) return;
-                      if (!improvementTextValue.trim()) {
-                        setImprovementError('Por favor, descreva como deseja melhorar a modelo.');
-                        return;
-                      }
-
-                      setImprovementError(null);
-                      setIsSubmittingImprovement(true);
-
-                      try {
-                        const response = await fetch('/api/ai/improve-generation', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            resultId: selectedResultForImprovement,
-                            improvementText: improvementTextValue.trim(),
-                          }),
-                        });
-
-                        const payload = await response.json();
-                        if (!response.ok || !payload.success) {
-                          throw new Error(payload.error || 'Erro ao melhorar imagem');
-                        }
-
-                        if (typeof payload.creditsRemaining === 'number') {
-                          setUserCredits(payload.creditsRemaining);
-                        }
-
-                        const targetResultId = selectedResultForImprovement;
-                        setShowAIImprovementModal(false);
-                        setSelectedResultForImprovement(null);
-                        setImprovementTextValue('');
-                        setRegeneratingResultId(targetResultId);
-
-                        await handleGenerate({ keepExisting: true, regenerationReason: 'improvement' });
-                      } catch (error: any) {
-                        console.error('Error improving generation:', error);
-                        setImprovementError(error.message || 'Erro ao melhorar imagem. Tente novamente.');
-                      } finally {
-                        setRegeneratingResultId(null);
-                        setIsSubmittingImprovement(false);
-                      }
-                    }}
-                    disabled={isSubmittingImprovement}
-                    className={`flex-1 font-inter px-4 py-3 rounded-2xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                      isSubmittingImprovement
-                        ? 'bg-gray-400 text-white cursor-not-allowed opacity-80'
-                        : 'bg-gradient-to-r from-[#f8ecda] via-[#e6cda3] to-[#c89a5c] text-[#3f2f1d] hover:shadow-lg active:scale-[0.98]'
-                    }`}
-                  >
-                    {isSubmittingImprovement ? (
-                      <>
-                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-30" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path
-                            className="opacity-80"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8v4l4-4-4-4v4a12 12 0 00-12 12h4z"
-                          />
-                        </svg>
-                        <span>Processando...</span>
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
-                          <path
-                            stroke="currentColor"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={1.5}
-                            d="M12 3L13.5 7.5L18 9L13.5 10.5L12 15L10.5 10.5L6 9L10.5 7.5L12 3Z"
-                          />
-                        </svg>
-                        <span>Melhorar com IA (1 crédito)</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </>
-            )}
+          {/* Instruction hint */}
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 bg-white/10 backdrop-blur-xl rounded-full border border-white/20">
+            <p className="font-inter text-sm text-white/90">
+              Clique em qualquer lugar para fechar
+            </p>
           </div>
         </div>
       )}
+
     </div>
   );
 }

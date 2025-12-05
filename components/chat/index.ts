@@ -8,4 +8,14 @@ export { PromptSuggestions } from './prompt-suggestions';
 export { WhatsAppShareButton } from './whatsapp-share-button';
 export { WhatsAppNumberPopup } from './whatsapp-number-popup';
 
+// New e-commerce focused components
+export { ProductEditor } from './product-editor';
+export { ProductSelector } from './product-selector';
+export { QuickActions } from './quick-actions';
+export { BeforeAfterPreview } from './before-after-preview';
+export { BrandPresets } from './brand-presets';
+
 export type { Conversation, ChatMessage as ChatMessageType, ChatAttachment } from './chat-interface';
+export type { Product } from './product-selector';
+export type { QuickAction } from './quick-actions';
+export type { BrandPreset } from './brand-presets';

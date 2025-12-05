@@ -26,7 +26,7 @@ export const TipsCard: React.FC<TipsCardProps> = ({ tip, className }) => {
     >
       {/* Header */}
       <div className="flex items-center gap-2.5 py-0.5">
-        <h3 className="font-inter font-bold text-xl leading-normal text-[#111827]">
+        <h3 className="font-freight font-medium text-2xl leading-normal text-[#111827]">
           Dicas para melhores resultados
         </h3>
       </div>
