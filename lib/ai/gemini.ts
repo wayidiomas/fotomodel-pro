@@ -891,7 +891,16 @@ async function virtualTryOnWithModel(
     const client = getGeminiClient();
     const hasBackground = !!options.backgroundImageData;
 
-    console.log(`[virtualTryOnWithModel] Fallback with ${hasBackground ? '3 images' : '2 images'}, model: ${modelId}`);
+    // Normalize garment data to arrays (same as main virtualTryOn function)
+    const garmentImages = Array.isArray(options.garmentImageData)
+      ? options.garmentImageData
+      : [options.garmentImageData];
+    const garmentMimeTypes = Array.isArray(options.garmentMimeType)
+      ? options.garmentMimeType
+      : garmentImages.map(() => options.garmentMimeType || 'image/png');
+
+    const totalImages = garmentImages.length + 1 + (hasBackground ? 1 : 0);
+    console.log(`[virtualTryOnWithModel] Fallback with ${totalImages} images (${garmentImages.length} garment(s) + pose${hasBackground ? ' + background' : ''}), model: ${modelId}`);
 
     const aspectRatio = options.aspectRatio || '3:4';
     const model = client.getGenerativeModel({
@@ -905,24 +914,30 @@ async function virtualTryOnWithModel(
       } as any,
     });
 
-    // Build parts array: prompt + garment + pose + optional background
+    // Build parts array: prompt + garment(s) + pose + optional background
     const parts: Part[] = [
       {
         text: options.prompt,
       },
-      {
-        inlineData: {
-          data: options.garmentImageData,
-          mimeType: options.garmentMimeType || 'image/png',
-        },
-      },
-      {
-        inlineData: {
-          data: options.poseImageData,
-          mimeType: options.poseMimeType || 'image/png',
-        },
-      },
     ];
+
+    // Add ALL garment images in order (for outfits: top first, bottom second)
+    for (let i = 0; i < garmentImages.length; i++) {
+      parts.push({
+        inlineData: {
+          data: garmentImages[i],
+          mimeType: garmentMimeTypes[i] || 'image/png',
+        },
+      });
+    }
+
+    // Add pose reference
+    parts.push({
+      inlineData: {
+        data: options.poseImageData,
+        mimeType: options.poseMimeType || 'image/png',
+      },
+    });
 
     // Add background as 3rd reference image if provided
     if (options.backgroundImageData) {
