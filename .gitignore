@@ -33,3 +33,16 @@ yarn-error.log*
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Migration/batch scripts (temporary)
+batch-*.sql
+consolidated-*.sql
+all-batches-*.sql
+group-*.sql
+insert-*.sql
+insert-*.js
+migrate-*.js
+list-*.js
+exec-*.sh
+poses-*.json
+app/onboard_test/
