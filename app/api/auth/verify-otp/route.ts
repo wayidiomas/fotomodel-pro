@@ -235,6 +235,41 @@ export async function POST(request: NextRequest) {
       // User exists - use existing user ID
       userId = existingPublicUser.id;
       isNewUser = false;
+
+      // Check if this existing user should be migrated from Bubble
+      // Only check if not already marked as Bubble user
+      if (!existingPublicUser.migrated_from_bubble) {
+        console.log('[verify-otp] Existing user - checking Bubble migration for phone:', phone);
+        const bubbleCheck = await checkBubbleUserExists(phone);
+        console.log('[verify-otp] Bubble check result for existing user:', bubbleCheck);
+
+        if (bubbleCheck.exists) {
+          console.log('[verify-otp] 🎉 Existing user is a Bubble user! Upgrading account...');
+
+          // Update user with Bubble data
+          const { error: updateBubbleError } = await supabase
+            .from('users')
+            .update({
+              migrated_from_bubble: true,
+              bubble_user_id: bubbleCheck.bubbleUserId,
+              bubble_welcome_shown: false,
+              credits: 50, // Upgrade to 50 credits
+            })
+            .eq('id', userId);
+
+          if (updateBubbleError) {
+            console.error('[verify-otp] Error updating existing user with Bubble data:', updateBubbleError);
+          } else {
+            console.log(`✅ Existing user upgraded to Bubble user:`, {
+              userId,
+              phone,
+              bubbleId: bubbleCheck.bubbleUserId,
+              previousCredits: existingPublicUser.credits,
+              newCredits: 50
+            });
+          }
+        }
+      }
     }
 
     // Create a session for the user using admin API
