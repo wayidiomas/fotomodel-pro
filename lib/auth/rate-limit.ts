@@ -9,7 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 export const RATE_LIMITS = {
   'send-otp': {
     maxAttempts: 3,
-    windowMinutes: 60, // 1 hour
+    windowMinutes: 1, // 1 minute between retry attempts
   },
   'verify-otp': {
     maxAttempts: 5,
